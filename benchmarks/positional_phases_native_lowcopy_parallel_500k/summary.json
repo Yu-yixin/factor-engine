@@ -1,0 +1,40 @@
+[
+  {
+    "expression_count": 1,
+    "row_count": 500000,
+    "group_count": 5470,
+    "total_time_sec": 0.1747050000121817,
+    "peak_rss_mb": 212.48828125,
+    "peak_frame_col_count": 12,
+    "phase_count": 1,
+    "child_expr_total_ms": 13.045999992755242,
+    "positional_total_ms": 53.78259999270085,
+    "positional_to_list_total_ms": 14.070600009290501,
+    "positional_group_scan_total_ms": 30.665100000000002,
+    "result_attach_total_ms": 0.3541000041877851,
+    "python_kernel_used": false,
+    "native_kernel_used": true,
+    "native_low_copy_bridge_used": true,
+    "python_object_bridge_used": false,
+    "native_parallel_used": true
+  },
+  {
+    "expression_count": 8,
+    "row_count": 500000,
+    "group_count": 5470,
+    "total_time_sec": 0.33747589999984484,
+    "peak_rss_mb": 302.7265625,
+    "peak_frame_col_count": 19,
+    "phase_count": 8,
+    "child_expr_total_ms": 78.43809998303186,
+    "positional_total_ms": 124.9303999793483,
+    "positional_to_list_total_ms": 28.172899983474053,
+    "positional_group_scan_total_ms": 48.6973,
+    "result_attach_total_ms": 1.4642999740317464,
+    "python_kernel_used": false,
+    "native_kernel_used": true,
+    "native_low_copy_bridge_used": true,
+    "python_object_bridge_used": false,
+    "native_parallel_used": true
+  }
+]

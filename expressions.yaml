@@ -1,0 +1,129 @@
+expressions:
+  - name: spread
+    expression: "close - open"
+
+  - name: abs_spread
+    expression: "abs(close - open)"
+
+  - name: sign_spread
+    expression: "sign(close - open)"
+
+  - name: clipped_close
+    expression: "clip(close, 0, 1000000)"
+
+  - name: close_not_null
+    expression: "not is_null(close)"
+
+  - name: filled_close
+    expression: "fill_null(close, 0)"
+
+  - name: where_close_open
+    expression: "where(close > open, close, open)"
+
+  - name: logic_combo
+    expression: "not is_null(close) and close > open"
+
+  - name: cs_demean_close
+    expression: "demean(close)"
+
+  - name: cs_zscore_close
+    expression: "zscore(close)"
+
+  - name: cs_rank_close
+    expression: "rank(close, ascending=false, pct=true)"
+
+  - name: delay_1
+    expression: "delay(close, 1)"
+
+  - name: delta_1
+    expression: "delta(close, 1)"
+
+  - name: pct_change_1
+    expression: "pct_change(close, 1)"
+
+  - name: ts_min_5
+    expression: "ts_min(close, 5)"
+
+  - name: ts_max_5
+    expression: "ts_max(close, 5)"
+
+  - name: ts_median_5
+    expression: "ts_median(close, 5)"
+
+  - name: ts_mean_5
+    expression: "ts_mean(close, 5)"
+
+  - name: ts_sum_5
+    expression: "ts_sum(close, 5)"
+
+  - name: ts_std_5
+    expression: "ts_std(close, 5)"
+
+  - name: ts_count_up_5
+    expression: "ts_count(close > open, 5)"
+
+  - name: ts_any_up_5
+    expression: "ts_any(close > open, 5)"
+
+  - name: ts_all_up_5
+    expression: "ts_all(close > open, 5)"
+
+  - name: ts_rank_5
+    expression: "ts_rank(close, 5, pct=true)"
+
+  - name: argmax_5
+    expression: "argmax(close, 5)"
+
+  - name: argmin_5
+    expression: "argmin(close, 5)"
+
+  - name: corr_close_volume_5
+    expression: "corr(close, volume, 5)"
+
+  - name: cov_close_volume_5
+    expression: "cov(close, volume, 5)"
+
+  - name: skew_close_5
+    expression: "skew(close, 5)"
+
+  - name: kurt_close_5
+    expression: "kurt(close, 5)"
+
+  - name: seg_mean_3
+    expression: "seg_mean(close, 3)"
+
+  - name: seg_sum_3
+    expression: "seg_sum(close, 3)"
+
+  - name: seg_count_up_3
+    expression: "seg_count(close > open, 3)"
+
+  - name: seg_any_up_3
+    expression: "seg_any(close > open, 3)"
+
+  - name: seg_all_up_3
+    expression: "seg_all(close > open, 3)"
+
+  - name: seglen_mean
+    expression: "seglen_mean(close, [3, 5, 2])"
+
+  - name: seglen_sum
+    expression: "seglen_sum(close, [3, 5, 2])"
+
+  - name: seglen_count_up
+    expression: "seglen_count(close > open, [3, 5, 2])"
+
+  - name: seglen_any_up
+    expression: "seglen_any(close > open, [3, 5, 2])"
+
+  - name: seglen_all_up
+    expression: "seglen_all(close > open, [3, 5, 2])"
+
+  - name: composed_ts_clip
+    expression: "clip(ts_mean(close, 5), 0, 1000000)"
+
+  - name: composed_logic_where
+    expression: "where(not is_null(close) and volume > ts_mean(volume, 5), close, open)"
+
+  - name: composed_seg_compare
+    expression: "close - seg_mean(close, 3)"

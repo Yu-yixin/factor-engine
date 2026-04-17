@@ -1,0 +1,47 @@
+{
+  "run_id": "c9b617c32e854bf69436be17c4cde0a7",
+  "timestamp": "2026-04-16T08:14:36+00:00",
+  "benchmark_name": "direction_check_1_v1",
+  "dataset_name": "minute_2026_03.parquet",
+  "row_count": 29048679,
+  "group_count": 5495,
+  "input_column_count": 8,
+  "expression_count": 1,
+  "mode": "evaluate_many",
+  "total_time_sec": 19.11006729998917,
+  "peak_rss_mb": 5301.8359375,
+  "result_column_count": 1,
+  "total_stage_count": 2,
+  "peak_live_stage_count_estimate": 2,
+  "peak_frame_col_count": 12,
+  "alive_stage_at_batch_end_count": 2,
+  "ordered_batch_count": 1,
+  "materialized_stage_count": 1,
+  "positional_stage_count": 1,
+  "staged_prefix_stage_count": 0,
+  "dropped_stage_count": 0,
+  "python_version": "3.13.13",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "driver_elapsed_sec": 20.10617519999505,
+  "result_checksum": 58004764,
+  "phase_summary": {
+    "phase_count": 1,
+    "child_expr_total_ms": 492.2736000007717,
+    "positional_total_ms": 11021.72150000115,
+    "positional_to_list_total_ms": 563.5886999953073,
+    "positional_group_scan_total_ms": 9094.76240001095,
+    "result_attach_total_ms": 199.29089999641292,
+    "python_kernel_used": true,
+    "max_group_size": 5302,
+    "avg_group_size": 5286.383803457688
+  },
+  "expression_names": [
+    "pos_01_argmax_5_5"
+  ],
+  "expressions": [
+    [
+      "pos_01_argmax_5_5",
+      "argmax(ts_mean(fill_null(close, open), 5), 5)"
+    ]
+  ]
+}

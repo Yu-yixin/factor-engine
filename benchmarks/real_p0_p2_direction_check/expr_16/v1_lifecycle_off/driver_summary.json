@@ -1,0 +1,122 @@
+{
+  "run_id": "a7d3aad10f634e4fbe0c949ed9e8029a",
+  "timestamp": "2026-04-16T08:20:49+00:00",
+  "benchmark_name": "direction_check_16_v1",
+  "dataset_name": "minute_2026_03.parquet",
+  "row_count": 29048679,
+  "group_count": 5495,
+  "input_column_count": 8,
+  "expression_count": 16,
+  "mode": "evaluate_many",
+  "total_time_sec": 168.13389690000622,
+  "peak_rss_mb": 13375.1171875,
+  "result_column_count": 16,
+  "total_stage_count": 23,
+  "peak_live_stage_count_estimate": 23,
+  "peak_frame_col_count": 48,
+  "alive_stage_at_batch_end_count": 23,
+  "ordered_batch_count": 1,
+  "materialized_stage_count": 7,
+  "positional_stage_count": 16,
+  "staged_prefix_stage_count": 0,
+  "dropped_stage_count": 0,
+  "python_version": "3.13.13",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "driver_elapsed_sec": 168.95018109999364,
+  "result_checksum": 5723081799,
+  "phase_summary": {
+    "phase_count": 16,
+    "child_expr_total_ms": 3062.5163999939105,
+    "positional_total_ms": 156666.5279999579,
+    "positional_to_list_total_ms": 8832.3195999983,
+    "positional_group_scan_total_ms": 128603.44690002967,
+    "result_attach_total_ms": 3199.1558999870904,
+    "python_kernel_used": true,
+    "max_group_size": 5302,
+    "avg_group_size": 5286.383803457688
+  },
+  "expression_names": [
+    "pos_01_argmax_5_5",
+    "pos_02_argmin_10_10",
+    "pos_03_argmax_20_20",
+    "pos_04_argmin_30_20",
+    "pos_05_argmax_40_20",
+    "pos_06_argmin_60_20",
+    "pos_07_argmax_20_5",
+    "pos_08_argmin_20_10",
+    "pos_09_argmax_20_30",
+    "pos_10_argmin_20_40",
+    "pos_11_argmax_20_60",
+    "pos_12_argmin_10_20",
+    "pos_13_argmax_30_30",
+    "pos_14_argmin_40_40",
+    "pos_15_argmax_60_60",
+    "pos_16_argmin_5_20"
+  ],
+  "expressions": [
+    [
+      "pos_01_argmax_5_5",
+      "argmax(ts_mean(fill_null(close, open), 5), 5)"
+    ],
+    [
+      "pos_02_argmin_10_10",
+      "argmin(ts_mean(close, 10), 10)"
+    ],
+    [
+      "pos_03_argmax_20_20",
+      "argmax(ts_mean(close, 20), 20)"
+    ],
+    [
+      "pos_04_argmin_30_20",
+      "argmin(ts_mean(fill_null(close, open), 30), 20)"
+    ],
+    [
+      "pos_05_argmax_40_20",
+      "argmax(ts_mean(close, 40), 20)"
+    ],
+    [
+      "pos_06_argmin_60_20",
+      "argmin(ts_mean(close, 60), 20)"
+    ],
+    [
+      "pos_07_argmax_20_5",
+      "argmax(ts_mean(fill_null(close, open), 20), 5)"
+    ],
+    [
+      "pos_08_argmin_20_10",
+      "argmin(ts_mean(close, 20), 10)"
+    ],
+    [
+      "pos_09_argmax_20_30",
+      "argmax(ts_mean(close, 20), 30)"
+    ],
+    [
+      "pos_10_argmin_20_40",
+      "argmin(ts_mean(fill_null(close, open), 20), 40)"
+    ],
+    [
+      "pos_11_argmax_20_60",
+      "argmax(ts_mean(close, 20), 60)"
+    ],
+    [
+      "pos_12_argmin_10_20",
+      "argmin(ts_mean(close, 10), 20)"
+    ],
+    [
+      "pos_13_argmax_30_30",
+      "argmax(ts_mean(fill_null(close, open), 30), 30)"
+    ],
+    [
+      "pos_14_argmin_40_40",
+      "argmin(ts_mean(close, 40), 40)"
+    ],
+    [
+      "pos_15_argmax_60_60",
+      "argmax(ts_mean(close, 60), 60)"
+    ],
+    [
+      "pos_16_argmin_5_20",
+      "argmin(ts_mean(fill_null(close, open), 5), 20)"
+    ]
+  ]
+}

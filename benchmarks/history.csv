@@ -1,0 +1,3 @@
+timestamp,mode,data_path,expression_source,rows,codes,expressions,success_count,failed_count,total_time_seconds,load_time_seconds,validate_time_seconds,execute_time_seconds,write_time_seconds,output_path,notes
+2026-04-15T01:09:41+00:00,benchmark_real_workload,generated://benchmark_real_workload,inline:benchmark_real_workload,120000,500,26,26,0,229.20274770000833,0.06633450000663288,,229.12345030001597,0.007762699999148026,,wrote baseline.md and profile.md
+2026-04-15T01:33:35+00:00,workflow_strict,data/data_fe.parquet,C:\Users\yuyix\Desktop\factor-engine\.tmp_preflight_probe\expressions.json,29048679,5495,2,2,0,33.7368817999959,0.0010335999832022935,,33.73582400000305,12.743142600025749,C:\Users\yuyix\Desktop\factor-engine\.tmp_preflight_probe\result.parquet,

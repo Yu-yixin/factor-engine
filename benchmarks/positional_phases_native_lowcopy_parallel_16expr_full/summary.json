@@ -1,0 +1,21 @@
+[
+  {
+    "expression_count": 16,
+    "row_count": 29048679,
+    "group_count": 5495,
+    "total_time_sec": 22.96513790001336,
+    "peak_rss_mb": 12754.7109375,
+    "peak_frame_col_count": 27,
+    "phase_count": 16,
+    "child_expr_total_ms": 2698.4647999925073,
+    "positional_total_ms": 11708.788699950674,
+    "positional_to_list_total_ms": 2610.572299992782,
+    "positional_group_scan_total_ms": 5111.6375,
+    "result_attach_total_ms": 6.760099975508638,
+    "python_kernel_used": false,
+    "native_kernel_used": true,
+    "native_low_copy_bridge_used": true,
+    "python_object_bridge_used": false,
+    "native_parallel_used": true
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "expression_count": 1,
+    "row_count": 10000,
+    "group_count": 5470,
+    "total_time_sec": 0.02556209999602288,
+    "peak_rss_mb": 71.515625,
+    "peak_frame_col_count": 12,
+    "phase_count": 1,
+    "child_expr_total_ms": 4.783800002769567,
+    "positional_total_ms": 5.362099997000769,
+    "positional_to_list_total_ms": 0.22780000290367752,
+    "positional_group_scan_total_ms": 4.266300005838275,
+    "result_attach_total_ms": 0.4082999948877841,
+    "python_kernel_used": true,
+    "native_kernel_used": false
+  }
+]

@@ -15,20 +15,20 @@ Environment:
 
 | mode | mean (s) | min (s) | max (s) | repeats | avg / expr (ms) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| evaluate() loop | 7.760473 | 7.747304 | 7.773641 | 2 | 298.480 |
-| evaluate_many() | 6.178913 | 6.165256 | 6.192570 | 2 | 237.650 |
-| workflow batch | 6.241781 | 6.202582 | 6.280981 | 2 | 240.069 |
-| workflow batch report | 6.442421 | 6.428115 | 6.456728 | 2 | 247.785 |
+| evaluate() loop | 11.580486 | 10.975632 | 12.185341 | 2 | 445.403 |
+| evaluate_many() | 9.067172 | 8.820359 | 9.313986 | 2 | 348.737 |
+| workflow batch | 9.096905 | 9.062693 | 9.131116 | 2 | 349.881 |
+| workflow batch report | 9.521175 | 9.309360 | 9.732991 | 2 | 366.199 |
 
 ## Optimization Check
 
 | scenario | mean (s) | note |
 | --- | ---: | --- |
-| legacy workflow report loop | 7.733965 | one-by-one `evaluate()` with `with_columns()` append |
-| optimized workflow report | 6.442421 | validate individually, then fast-path `evaluate_many()` with fallback |
+| legacy workflow report loop | 12.507305 | one-by-one `evaluate()` with `with_columns()` append |
+| optimized workflow report | 9.521175 | validate individually, then fast-path `evaluate_many()` with fallback |
 
 ## Summary
 
-- `evaluate_many()` speedup vs `evaluate()` loop: `1.26x`
-- `workflow batch / evaluate_many()`: `1.01x`
-- `legacy report / optimized report`: `1.20x`
+- `evaluate_many()` speedup vs `evaluate()` loop: `1.28x`
+- `workflow batch / evaluate_many()`: `1.00x`
+- `legacy report / optimized report`: `1.31x`

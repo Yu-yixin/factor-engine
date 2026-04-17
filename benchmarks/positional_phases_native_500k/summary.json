@@ -1,0 +1,34 @@
+[
+  {
+    "expression_count": 1,
+    "row_count": 500000,
+    "group_count": 5470,
+    "total_time_sec": 0.12775899999542162,
+    "peak_rss_mb": 204.109375,
+    "peak_frame_col_count": 12,
+    "phase_count": 1,
+    "child_expr_total_ms": 11.903199992957525,
+    "positional_total_ms": 45.794999998179264,
+    "positional_to_list_total_ms": 24.238300004550442,
+    "positional_group_scan_total_ms": 8.4953,
+    "result_attach_total_ms": 0.12150000839028507,
+    "python_kernel_used": false,
+    "native_kernel_used": true
+  },
+  {
+    "expression_count": 8,
+    "row_count": 500000,
+    "group_count": 5470,
+    "total_time_sec": 0.5451443000056315,
+    "peak_rss_mb": 311.87890625,
+    "peak_frame_col_count": 19,
+    "phase_count": 8,
+    "child_expr_total_ms": 72.612299976754,
+    "positional_total_ms": 361.1778999911621,
+    "positional_to_list_total_ms": 195.14600002607574,
+    "positional_group_scan_total_ms": 69.4833,
+    "result_attach_total_ms": 0.6169999833218753,
+    "python_kernel_used": false,
+    "native_kernel_used": true
+  }
+]

@@ -1,0 +1,40 @@
+[
+  {
+    "expression_count": 1,
+    "row_count": 500000,
+    "group_count": 5470,
+    "total_time_sec": 0.1031788999971468,
+    "peak_rss_mb": 207.9921875,
+    "peak_frame_col_count": 12,
+    "phase_count": 1,
+    "child_expr_total_ms": 11.656100003165193,
+    "positional_total_ms": 21.20090000971686,
+    "positional_to_list_total_ms": 3.607300022849813,
+    "positional_group_scan_total_ms": 10.934,
+    "result_attach_total_ms": 0.35509999725036323,
+    "python_kernel_used": false,
+    "native_kernel_used": true,
+    "native_low_copy_bridge_used": true,
+    "python_object_bridge_used": false,
+    "native_parallel_used": false
+  },
+  {
+    "expression_count": 8,
+    "row_count": 500000,
+    "group_count": 5470,
+    "total_time_sec": 0.39885070000309497,
+    "peak_rss_mb": 316.30859375,
+    "peak_frame_col_count": 19,
+    "phase_count": 8,
+    "child_expr_total_ms": 97.75420003279578,
+    "positional_total_ms": 167.17759998573456,
+    "positional_to_list_total_ms": 27.803099976154044,
+    "positional_group_scan_total_ms": 93.0612,
+    "result_attach_total_ms": 1.5590999537380412,
+    "python_kernel_used": false,
+    "native_kernel_used": true,
+    "native_low_copy_bridge_used": true,
+    "python_object_bridge_used": false,
+    "native_parallel_used": false
+  }
+]
