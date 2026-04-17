@@ -815,3 +815,48 @@
   - 不支持属性访问形式，例如 `fft(close).magnitude`
 - 最小示例：
   - `fft(close)`
+
+## Alpha101 compatibility additions
+
+This section records the Alpha101-compatible names added after the original
+function inventory. These additions do not change DSL syntax, planner routes,
+lifecycle behavior, native-heavy kernels, or M4 frozen structural rules.
+
+### Alias functions
+
+These names are parser-level aliases. They resolve to the canonical function
+before validation, planning, DAG/CSE identity, and execution:
+
+- `sum(x, n)` -> `ts_sum(x, n)`
+- `stddev(x, n)` -> `ts_std(x, n)`
+- `correlation(x, y, n)` -> `corr(x, y, n)`
+- `covariance(x, y, n)` -> `cov(x, y, n)`
+- `min(x, n)` -> `ts_min(x, n)`
+- `max(x, n)` -> `ts_max(x, n)`
+
+Alias functions must have the same route, ordered-audit behavior, and row-wise
+results as their canonical targets.
+
+### Pointwise functions
+
+- `log(x)`: natural logarithm. `null` remains `null`; non-positive finite inputs
+  follow backend floating-point semantics (`log(0) = -inf`, negative inputs
+  become `NaN`).
+- `signedpower(x, a)`: `sign(x) * abs(x) ^ a`. The exponent `a` must be a scalar
+  numeric literal. `null` in `x` remains `null`.
+
+Existing pointwise functions in this family include `abs(x)` and `sign(x)`.
+
+### Cross-sectional function
+
+- `scale(x, a=1)`: per-time cross-sectional scaling. For each `time` slice,
+  non-null values are scaled so that `sum(abs(result)) = a`. The `a` argument
+  must be a scalar numeric literal. `null` input rows remain `null`. If the
+  denominator for a slice is zero or null, the result for that slice is `null`.
+
+### Deferred function
+
+- `product(x, d)` is intentionally not included in this batch. The current
+  backend does not expose a clean vectorized rolling product expression, and
+  the Python callback fallback is outside the accepted operator-addition
+  boundary. It requires a separate design before it can be supported.

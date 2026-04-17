@@ -18,7 +18,17 @@ from factor_engine.ast_nodes import (
     VariableNode,
 )
 from factor_engine.executor import Executor
+from factor_engine.dag import ExpressionDag
 from factor_engine.errors import ArgumentError
+from factor_engine.lifecycle import (
+    normalize_helper_lifecycle_mode,
+    normalize_lifecycle_mode,
+    normalize_frame_projection_mode,
+    normalize_fusion_mode,
+    normalize_materialization_threshold_mode,
+    normalize_output_attach_mode,
+    normalize_planner_cse_mode,
+)
 from factor_engine.lexer import Lexer
 from factor_engine.parser import Parser
 from factor_engine.planner import BatchPlanningItem, ExecutionPlan, ExecutionPlanner
@@ -121,6 +131,7 @@ class FactorEngine:
         )
         self.last_profile_summary = None
         self.last_profile_artifacts: ProfileArtifacts | None = None
+        self.last_expression_dag: ExpressionDag | None = None
 
     def parse(self, expression: str):
         return _clone_expr(self._get_or_parse_ast(expression))
@@ -132,6 +143,13 @@ class FactorEngine:
         expr = self._get_or_parse_ast(expression)
         validation = self._get_or_validate(expression, df)
         return self._planner.inspect_route(expr, validation)
+
+    def inspect_dag(self, expressions: Sequence[tuple[str, str]], df: pl.DataFrame) -> dict[str, object]:
+        dag_items = [
+            (output_name, self._get_or_parse_ast(expression))
+            for output_name, expression in expressions
+        ]
+        return self._planner.inspect_expression_dag(dag_items)
 
     def evaluate(
         self,
@@ -170,7 +188,42 @@ class FactorEngine:
         benchmark_name: str = "evaluate_many_stage_lifecycle",
         dataset_name: str = "dataframe",
         lifecycle: bool = False,
+        lifecycle_mode: str | None = None,
+        helper_lifecycle_mode: str | None = None,
+        output_attach_mode: str | None = None,
+        frame_projection_mode: str | None = None,
+        materialization_threshold_mode: str | None = None,
+        recomputation_guardrail_max_expansion: int = 0,
+        planner_cse_mode: str | None = None,
+        fusion_mode: str | None = None,
+        dag_cse: bool = True,
     ) -> pl.DataFrame:
+        try:
+            resolved_lifecycle_mode = normalize_lifecycle_mode(
+                lifecycle=lifecycle,
+                lifecycle_mode=lifecycle_mode,
+            )
+            resolved_helper_lifecycle_mode = normalize_helper_lifecycle_mode(
+                helper_lifecycle_mode=helper_lifecycle_mode,
+            )
+            resolved_output_attach_mode = normalize_output_attach_mode(
+                output_attach_mode=output_attach_mode,
+            )
+            resolved_frame_projection_mode = normalize_frame_projection_mode(
+                frame_projection_mode=frame_projection_mode,
+            )
+            resolved_materialization_threshold_mode = normalize_materialization_threshold_mode(
+                materialization_threshold_mode=materialization_threshold_mode,
+            )
+            resolved_planner_cse_mode = normalize_planner_cse_mode(
+                planner_cse_mode=planner_cse_mode,
+            )
+            resolved_fusion_mode = normalize_fusion_mode(
+                fusion_mode=fusion_mode,
+            )
+        except ValueError as exc:
+            raise ArgumentError(str(exc)) from exc
+
         profiler = (
             StageLifecycleProfiler(
                 benchmark_name=benchmark_name,
@@ -185,7 +238,7 @@ class FactorEngine:
             else None
         )
         compiled_no_time_items: list[tuple[str, ValidationResult, pl.Expr]] = []
-        compiled_time_items: list[tuple[str, ValidationResult, pl.Expr]] = []
+        compiled_time_items: list[tuple[str, Expr, ValidationResult, pl.Expr]] = []
         seen_names: set[str] = set()
         planning_items: list[BatchPlanningItem] = []
 
@@ -208,15 +261,31 @@ class FactorEngine:
                 )
             )
             if artifacts.compiled is not None:
-                target_bucket = (
-                    compiled_time_items
-                    if artifacts.validation.profile.needs_time_order
-                    else compiled_no_time_items
-                )
-                target_bucket.append((output_name, artifacts.validation, artifacts.compiled))
+                if artifacts.validation.profile.needs_time_order:
+                    compiled_time_items.append(
+                        (output_name, artifacts.expr, artifacts.validation, artifacts.compiled)
+                    )
+                else:
+                    compiled_no_time_items.append((output_name, artifacts.validation, artifacts.compiled))
 
-        deferred_planning_items = [item for item in planning_items if item.plan.route != "compiled"]
-        batch_plan = self._planner.build_batch_plan(deferred_planning_items)
+        self.last_expression_dag = self._planner.build_expression_dag(
+            [(item.output_name, item.expr) for item in planning_items],
+            materialization_threshold_mode=resolved_materialization_threshold_mode,
+            recomputation_guardrail_max_expansion=recomputation_guardrail_max_expansion,
+            planner_cse_mode=resolved_planner_cse_mode,
+            fusion_mode=resolved_fusion_mode,
+        )
+        deferred_planning_items = [
+            item
+            for item in planning_items
+            if item.plan.route != "compiled" or item.validation.profile.needs_time_order
+        ]
+        batch_plan = self._planner.with_materialization_policy(
+            materialization_threshold_mode=resolved_materialization_threshold_mode,
+            recomputation_guardrail_max_expansion=recomputation_guardrail_max_expansion,
+            planner_cse_mode=resolved_planner_cse_mode,
+            fusion_mode=resolved_fusion_mode,
+        ).build_batch_plan(deferred_planning_items)
 
         result_df = df
         if compiled_no_time_items:
@@ -225,7 +294,17 @@ class FactorEngine:
                 time_col=self.time_col,
                 code_col=self.code_col,
                 profile_recorder=profiler,
-                lifecycle_enabled=lifecycle,
+                lifecycle_mode=resolved_lifecycle_mode,
+                helper_lifecycle_mode=resolved_helper_lifecycle_mode,
+                output_attach_mode=resolved_output_attach_mode,
+                frame_projection_mode=resolved_frame_projection_mode,
+                materialization_threshold_mode=resolved_materialization_threshold_mode,
+                recomputation_guardrail_max_expansion=(
+                    recomputation_guardrail_max_expansion
+                ),
+                planner_cse_mode=resolved_planner_cse_mode,
+                fusion_mode=resolved_fusion_mode,
+                dag_cse_enabled=dag_cse,
             )
             result_df = executor.evaluate_many_compiled(compiled_no_time_items)
 
@@ -241,7 +320,17 @@ class FactorEngine:
                 time_col=self.time_col,
                 code_col=self.code_col,
                 profile_recorder=profiler,
-                lifecycle_enabled=lifecycle,
+                lifecycle_mode=resolved_lifecycle_mode,
+                helper_lifecycle_mode=resolved_helper_lifecycle_mode,
+                output_attach_mode=resolved_output_attach_mode,
+                frame_projection_mode=resolved_frame_projection_mode,
+                materialization_threshold_mode=resolved_materialization_threshold_mode,
+                recomputation_guardrail_max_expansion=(
+                    recomputation_guardrail_max_expansion
+                ),
+                planner_cse_mode=resolved_planner_cse_mode,
+                fusion_mode=resolved_fusion_mode,
+                dag_cse_enabled=dag_cse,
             ).evaluate_many_planned(
                 batch_plan,
                 compiled_time_items=compiled_time_items,

@@ -1,0 +1,12 @@
+{
+  "alpha_1": "Uses Ts_ArgMax / positional native-heavy path; supported by staging, but not among the safest 10.",
+  "alpha_5": "Requires vwap, which is not a physical column in data.parquet; deriving it would add semantic assumptions.",
+  "alpha_8": "Uses returns plus repeated deep composed rolling/delay expression; higher materialization pressure than selected set.",
+  "alpha_11": "Requires vwap, which is not a physical column in data.parquet.",
+  "alpha_14": "Uses returns plus mixed rank/correlation; feasible but higher nested pressure than selected set.",
+  "alpha_15": "Rolling sum over ranked rolling correlation; deeper ordered/cross-sectional staging pressure.",
+  "alpha_17": "Requires adv20 and more complex nested rolling/rank composition.",
+  "alpha_18": "Feasible, but combines stddev(abs(...)) and correlation under final rank; lower priority than cleaner selected set.",
+  "alpha_20": "Feasible with staging, but uses three delayed legs and three ranks; lower priority than selected set.",
+  "alpha_22": "Feasible with staging, but combines delta(correlation(...)) and rank(stddev(...)); lower priority than selected set."
+}

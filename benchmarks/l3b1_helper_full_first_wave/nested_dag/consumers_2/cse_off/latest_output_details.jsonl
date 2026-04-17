@@ -1,0 +1,1 @@
+{"output_name": "nested_dag", "batch_id": "6ed3b4c771b741af83485f43ea36ed47:batch:1", "created_order_index": 1, "attached_order_index": 2, "last_required_order_index": 2, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 15210.8515625, "source_column_name": null, "attached_to_working_frame": false}

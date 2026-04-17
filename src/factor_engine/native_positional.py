@@ -23,6 +23,11 @@ class NativePositionalResult:
     python_object_bridge_used: bool
     native_parallel_used: bool
     group_parallelism_level: int
+    output_buffer_bytes_estimate: int
+
+
+def _nullable_i64_buffer_bytes(length: int) -> int:
+    return length * 8 + ((length + 7) // 8)
 
 
 def native_requested() -> bool:
@@ -179,6 +184,7 @@ def evaluate_native_positional_kernel(
                 python_object_bridge_used=False,
                 native_parallel_used=parallel,
                 group_parallelism_level=(os.cpu_count() or 1) if parallel else 1,
+                output_buffer_bytes_estimate=_nullable_i64_buffer_bytes(result.len()),
             )
 
         native_started_at = time.perf_counter()
@@ -203,4 +209,5 @@ def evaluate_native_positional_kernel(
         python_object_bridge_used=True,
         native_parallel_used=False,
         group_parallelism_level=1,
+        output_buffer_bytes_estimate=_nullable_i64_buffer_bytes(result.len()),
     )

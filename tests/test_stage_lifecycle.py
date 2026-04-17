@@ -9,6 +9,8 @@ import polars as pl
 import pytest
 
 from factor_engine.engine import FactorEngine
+import factor_engine.executor as executor_module
+from factor_engine.native_positional import NativePositionalResult
 from factor_engine.native_positional import native_available
 from factor_engine.stage_registry import StageRegistry
 from examples.benchmark_stage_lifecycle import WORKLOADS, build_workload, load_summary
@@ -221,6 +223,9 @@ def test_evaluate_many_profiling_writes_stage_lifecycle_files():
             "latest_stage_details.jsonl",
             "latest_stage_events.jsonl",
             "latest_positional_phase_details.jsonl",
+            "latest_output_details.jsonl",
+            "latest_native_buffer_details.jsonl",
+            "latest_memory_events.jsonl",
             "benchmark_report.md",
         ]:
             assert (temp_dir / filename).exists()
@@ -228,6 +233,10 @@ def test_evaluate_many_profiling_writes_stage_lifecycle_files():
         run = json.loads((temp_dir / "latest_run.json").read_text(encoding="utf-8"))
         assert run["total_stage_count"] > 0
         assert run["alive_stage_at_batch_end_count"] > 0
+        assert "peak_output_col_count" in run
+        assert "peak_stage_col_count" in run
+        assert "peak_native_buffer_bytes_estimate" in run
+        assert "native_buffer_release_lag" in run
 
         events = (temp_dir / "latest_stage_events.jsonl").read_text(encoding="utf-8")
         assert "stage_created" in events
@@ -240,6 +249,220 @@ def test_evaluate_many_profiling_writes_stage_lifecycle_files():
         assert positional_phases[0]["native_kernel_used"] is False
         assert positional_phases[0]["positional_group_scan_time_ms"] >= 0
         assert positional_phases[0]["positional_to_list_time_ms"] >= 0
+
+        outputs = read_jsonl(temp_dir / "latest_output_details.jsonl")
+        memory_events = read_jsonl(temp_dir / "latest_memory_events.jsonl")
+        assert {item["output_name"] for item in outputs} == {
+            "argmaxed",
+            "ranked",
+            "corr_ranked",
+        }
+        assert all(item["attached_to_working_frame"] is False for item in outputs)
+        assert any(event["event_type"] == "output_created" for event in memory_events)
+        assert any(event["event_type"] == "output_attached" for event in memory_events)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_deferred_output_attach_keeps_outputs_out_of_ordered_working_frame():
+    temp_dir = workspace_temp_dir()
+    try:
+        FactorEngine().evaluate_many(
+            stage_lifecycle_expressions(),
+            build_ordered_stage_df(),
+            profiling=True,
+            profile_output_dir=temp_dir,
+            lifecycle=True,
+        )
+
+        run = json.loads((temp_dir / "latest_run.json").read_text(encoding="utf-8"))
+        batches = read_jsonl(temp_dir / "latest_batch_details.jsonl")
+        outputs = read_jsonl(temp_dir / "latest_output_details.jsonl")
+
+        assert run["peak_output_col_count"] == 0
+        assert batches[0]["peak_output_col_count"] == 0
+        assert all(item["attached_to_working_frame"] is False for item in outputs)
+        assert all(item["attached_order_index"] is not None for item in outputs)
+        assert all(item["is_late_alive_output"] is False for item in outputs)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_m3_finalize_select_output_attach_preserves_results_and_narrows_frame():
+    materialize_dir = workspace_temp_dir()
+    finalize_dir = workspace_temp_dir()
+    try:
+        df = build_ordered_stage_df()
+        expressions = [
+            ("a", "ts_rank(close, 2) + ts_rank(close, 2)"),
+            ("b", "ts_rank(open, 2) + ts_rank(open, 2)"),
+            ("c", "ts_rank(close, 2) + ts_rank(open, 2)"),
+        ]
+        materialized = FactorEngine().evaluate_many(
+            expressions,
+            df,
+            profiling=True,
+            profile_output_dir=materialize_dir,
+            output_attach_mode="materialize",
+        )
+        finalize_selected = FactorEngine().evaluate_many(
+            expressions,
+            df,
+            profiling=True,
+            profile_output_dir=finalize_dir,
+            lifecycle_mode="first_wave",
+            helper_lifecycle_mode="second_wave_nested",
+            output_attach_mode="finalize_select",
+        )
+
+        assert_frames_equal_with_nan(finalize_selected, materialized)
+
+        materialized_run = json.loads(
+            (materialize_dir / "latest_run.json").read_text(encoding="utf-8")
+        )
+        finalize_run = json.loads(
+            (finalize_dir / "latest_run.json").read_text(encoding="utf-8")
+        )
+
+        assert finalize_run["peak_frame_col_count"] <= materialized_run[
+            "peak_frame_col_count"
+        ]
+        assert finalize_run["input_column_count"] == materialized_run["input_column_count"]
+    finally:
+        shutil.rmtree(materialize_dir, ignore_errors=True)
+        shutil.rmtree(finalize_dir, ignore_errors=True)
+
+
+def test_m3_last_use_select_output_attach_is_executable_and_safe():
+    materialize_dir = workspace_temp_dir()
+    last_use_dir = workspace_temp_dir()
+    try:
+        df = build_ordered_stage_df()
+        expressions = [
+            ("a", "ts_rank(close, 2) + ts_rank(close, 2)"),
+            ("b", "ts_rank(open, 2) + ts_rank(open, 2)"),
+        ]
+        materialized = FactorEngine().evaluate_many(
+            expressions,
+            df,
+            profiling=True,
+            profile_output_dir=materialize_dir,
+            output_attach_mode="materialize",
+        )
+        last_use_selected = FactorEngine().evaluate_many(
+            expressions,
+            df,
+            profiling=True,
+            profile_output_dir=last_use_dir,
+            lifecycle_mode="first_wave",
+            helper_lifecycle_mode="second_wave_nested",
+            output_attach_mode="last_use_select",
+        )
+
+        assert_frames_equal_with_nan(last_use_selected, materialized)
+
+        materialized_run = json.loads(
+            (materialize_dir / "latest_run.json").read_text(encoding="utf-8")
+        )
+        last_use_run = json.loads(
+            (last_use_dir / "latest_run.json").read_text(encoding="utf-8")
+        )
+
+        assert last_use_run["peak_frame_col_count"] <= materialized_run[
+            "peak_frame_col_count"
+        ]
+        outputs = [
+            json.loads(line)
+            for line in (last_use_dir / "latest_output_details.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip()
+        ]
+        assert all(item["attached_to_working_frame"] is False for item in outputs)
+    finally:
+        shutil.rmtree(materialize_dir, ignore_errors=True)
+        shutil.rmtree(last_use_dir, ignore_errors=True)
+
+
+def test_m3_dependency_driven_projection_preserves_results():
+    baseline_dir = workspace_temp_dir()
+    projected_dir = workspace_temp_dir()
+    try:
+        df = build_ordered_stage_df()
+        expressions = [
+            ("a", "ts_rank(close, 2) + ts_rank(close, 2)"),
+            ("b", "ts_rank(open, 2) + ts_rank(open, 2)"),
+        ]
+        baseline = FactorEngine().evaluate_many(
+            expressions,
+            df,
+            profiling=True,
+            profile_output_dir=baseline_dir,
+            frame_projection_mode="off",
+        )
+        projected = FactorEngine().evaluate_many(
+            expressions,
+            df,
+            profiling=True,
+            profile_output_dir=projected_dir,
+            frame_projection_mode="dependency_driven",
+        )
+
+        assert_frames_equal_with_nan(projected, baseline)
+    finally:
+        shutil.rmtree(baseline_dir, ignore_errors=True)
+        shutil.rmtree(projected_dir, ignore_errors=True)
+
+
+def test_native_buffer_profile_events_record_immediate_release(monkeypatch):
+    temp_dir = workspace_temp_dir()
+
+    def fake_native_kernel(
+        value_series: pl.Series,
+        group_codes: pl.Series,
+        window: int,
+        *,
+        mode: str,
+    ) -> NativePositionalResult:
+        return NativePositionalResult(
+            series=pl.Series(value_series.name, [None] * value_series.len(), dtype=pl.Int64),
+            to_list_time_ms=0.1,
+            group_scan_time_ms=0.2,
+            series_construct_time_ms=0.3,
+            native_kernel_used=True,
+            low_copy_bridge_used=True,
+            python_object_bridge_used=False,
+            native_parallel_used=True,
+            group_parallelism_level=4,
+            output_buffer_bytes_estimate=value_series.len() * 8 + 1,
+        )
+
+    monkeypatch.setattr(executor_module, "evaluate_native_positional_kernel", fake_native_kernel)
+    try:
+        FactorEngine().evaluate_many(
+            [("argmaxed", "argmax(close, 2)")],
+            build_ordered_stage_df(),
+            profiling=True,
+            profile_output_dir=temp_dir,
+            lifecycle=True,
+        )
+
+        run = json.loads((temp_dir / "latest_run.json").read_text(encoding="utf-8"))
+        buffers = read_jsonl(temp_dir / "latest_native_buffer_details.jsonl")
+        memory_events = read_jsonl(temp_dir / "latest_memory_events.jsonl")
+
+        assert run["native_output_buffer_count"] == 1
+        assert run["peak_native_buffer_bytes_estimate"] > 0
+        assert run["native_buffer_release_lag"] == 0
+        assert run["parallel_enabled"] is True
+        assert buffers[0]["alive_before_attach"] is True
+        assert buffers[0]["alive_after_attach"] is False
+        assert buffers[0]["release_lag_steps"] == 0
+        assert {event["event_type"] for event in memory_events} >= {
+            "native_buffer_created",
+            "native_buffer_attached",
+            "native_buffer_released",
+        }
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 

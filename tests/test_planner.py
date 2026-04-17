@@ -164,6 +164,18 @@ def test_planner_routes_nested_cross_section_over_ordered_to_staged():
     assert [step.func_name for step in plan.staged.steps] == ["demean"]
 
 
+def test_planner_routes_scale_over_ordered_to_staged():
+    expr, validation = validate_expression("scale(ts_rank(close, 2), 2)", build_df())
+    plan = ExecutionPlanner().build_plan(expr, validation)
+
+    assert plan.route == "staged"
+    assert plan.staged is not None
+    assert plan.staged.source_expr == parse_expression("ts_rank(close, 2)")
+    assert len(plan.staged.steps) == 1
+    assert plan.staged.steps[0].func_name == "scale"
+    assert plan.staged.steps[0].scale_to == 2.0
+
+
 def test_planner_routes_group_rank_over_ordered_to_staged():
     expr, validation = validate_expression(
         "group_rank(ts_rank(close, 2), industry, pct=true)",
@@ -244,6 +256,7 @@ def test_planner_routes_plain_positional_root_to_positional_ordered(func_name: s
     ("ts_max(rank(close), 3)", "ts_max", 3),
     ("ts_median(rank(close), 3)", "ts_median", 3),
     ("ts_sum(rank(close), 3)", "ts_sum", 3),
+    ("sum(rank(close), 3)", "ts_sum", 3),
     ("skew(rank(close), 3)", "skew", 3),
     ("kurt(rank(close), 4)", "kurt", 4),
 ])

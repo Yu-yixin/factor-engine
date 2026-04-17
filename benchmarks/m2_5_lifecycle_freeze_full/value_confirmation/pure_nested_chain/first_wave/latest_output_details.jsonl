@@ -1,0 +1,1 @@
+{"output_name": "pure_nested_chain", "batch_id": "97326b4caa814362a1748f73a1df1505:batch:1", "created_order_index": 1, "attached_order_index": 6, "last_required_order_index": 6, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 21448.28515625, "source_column_name": null, "attached_to_working_frame": false}

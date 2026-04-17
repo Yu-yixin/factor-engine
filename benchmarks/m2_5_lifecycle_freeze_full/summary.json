@@ -1,0 +1,284 @@
+{
+  "rows": 29048679,
+  "data": "data.parquet",
+  "value_confirmation": [
+    {
+      "workload": "repeated_heavy",
+      "mode": "off",
+      "sec": 8.804451800009701,
+      "peak_live_bytes": 232389432,
+      "helper_bytes": 232389432,
+      "helper_before_bytes": 232389432,
+      "frame_width": 11,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 0,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 1,
+      "nested_miss_reasons": [
+        "mode_disabled"
+      ],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\repeated_heavy\\off"
+    },
+    {
+      "workload": "repeated_heavy",
+      "mode": "first_wave",
+      "sec": 9.691438099980587,
+      "peak_live_bytes": 0,
+      "helper_bytes": 0,
+      "helper_before_bytes": 232389432,
+      "frame_width": 10,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 1,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 0,
+      "nested_miss_reasons": [],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\repeated_heavy\\first_wave"
+    },
+    {
+      "workload": "repeated_heavy",
+      "mode": "second_wave_nested",
+      "sec": 10.103837500006193,
+      "peak_live_bytes": 0,
+      "helper_bytes": 0,
+      "helper_before_bytes": 232389432,
+      "frame_width": 10,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 1,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 0,
+      "nested_miss_reasons": [],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\repeated_heavy\\second_wave_nested"
+    },
+    {
+      "workload": "multi_shared_nodes",
+      "mode": "off",
+      "sec": 12.332147800014354,
+      "peak_live_bytes": 464778864,
+      "helper_bytes": 464778864,
+      "helper_before_bytes": 464778864,
+      "frame_width": 12,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 0,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 2,
+      "nested_miss_reasons": [
+        "mode_disabled"
+      ],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\multi_shared_nodes\\off"
+    },
+    {
+      "workload": "multi_shared_nodes",
+      "mode": "first_wave",
+      "sec": 11.520097000000533,
+      "peak_live_bytes": 0,
+      "helper_bytes": 0,
+      "helper_before_bytes": 464778864,
+      "frame_width": 10,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 2,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 0,
+      "nested_miss_reasons": [],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\multi_shared_nodes\\first_wave"
+    },
+    {
+      "workload": "multi_shared_nodes",
+      "mode": "second_wave_nested",
+      "sec": 10.284009200026048,
+      "peak_live_bytes": 0,
+      "helper_bytes": 0,
+      "helper_before_bytes": 464778864,
+      "frame_width": 10,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 2,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 0,
+      "nested_miss_reasons": [],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\multi_shared_nodes\\second_wave_nested"
+    },
+    {
+      "workload": "partial_reuse",
+      "mode": "off",
+      "sec": 11.396045600005891,
+      "peak_live_bytes": 232389432,
+      "helper_bytes": 232389432,
+      "helper_before_bytes": 232389432,
+      "frame_width": 12,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 0,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 1,
+      "nested_miss_reasons": [
+        "mode_disabled"
+      ],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\partial_reuse\\off"
+    },
+    {
+      "workload": "partial_reuse",
+      "mode": "first_wave",
+      "sec": 10.693782800022746,
+      "peak_live_bytes": 0,
+      "helper_bytes": 0,
+      "helper_before_bytes": 232389432,
+      "frame_width": 11,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 1,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 0,
+      "nested_miss_reasons": [],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\partial_reuse\\first_wave"
+    },
+    {
+      "workload": "partial_reuse",
+      "mode": "second_wave_nested",
+      "sec": 10.321631200000411,
+      "peak_live_bytes": 0,
+      "helper_bytes": 0,
+      "helper_before_bytes": 232389432,
+      "frame_width": 11,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 1,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 0,
+      "nested_miss_reasons": [],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\partial_reuse\\second_wave_nested"
+    },
+    {
+      "workload": "pure_nested_chain",
+      "mode": "off",
+      "sec": 10.820072900009109,
+      "peak_live_bytes": 464778864,
+      "helper_bytes": 464778864,
+      "helper_before_bytes": 464778864,
+      "frame_width": 12,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 0,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 2,
+      "nested_miss_reasons": [
+        "mode_disabled"
+      ],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\pure_nested_chain\\off"
+    },
+    {
+      "workload": "pure_nested_chain",
+      "mode": "first_wave",
+      "sec": 10.137856500019552,
+      "peak_live_bytes": 0,
+      "helper_bytes": 464778864,
+      "helper_before_bytes": 464778864,
+      "frame_width": 12,
+      "nested_helper_dropped_count": 0,
+      "helper_dropped_count": 0,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 2,
+      "nested_miss_reasons": [
+        "not_first_wave_helper_candidate"
+      ],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\pure_nested_chain\\first_wave"
+    },
+    {
+      "workload": "pure_nested_chain",
+      "mode": "second_wave_nested",
+      "sec": 9.956976799992844,
+      "peak_live_bytes": 0,
+      "helper_bytes": 0,
+      "helper_before_bytes": 464778864,
+      "frame_width": 10,
+      "nested_helper_dropped_count": 2,
+      "helper_dropped_count": 2,
+      "helper_drop_miss_count": 0,
+      "nested_helper_drop_missed_count": 0,
+      "nested_miss_reasons": [],
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\value_confirmation\\pure_nested_chain\\second_wave_nested"
+    }
+  ],
+  "rejection_audit": [
+    {
+      "case": "shared_inner",
+      "expected": "miss",
+      "passed": true,
+      "nested_helper_dropped_count": 0,
+      "nested_helper_drop_missed_count": 1,
+      "standardized_reasons": [
+        "not_nested"
+      ],
+      "sec": 11.608600400009891,
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\rejection_audit\\shared_inner"
+    },
+    {
+      "case": "non_helper_downstream",
+      "expected": "miss",
+      "passed": true,
+      "nested_helper_dropped_count": 0,
+      "nested_helper_drop_missed_count": 1,
+      "standardized_reasons": [
+        "not_nested"
+      ],
+      "sec": 9.741045500006294,
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\rejection_audit\\non_helper_downstream"
+    },
+    {
+      "case": "output_pinned",
+      "expected": "miss",
+      "passed": true,
+      "nested_helper_dropped_count": 0,
+      "nested_helper_drop_missed_count": 2,
+      "standardized_reasons": [
+        "has_blocker",
+        "output_pinned"
+      ],
+      "sec": 11.349622299982002,
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\rejection_audit\\output_pinned"
+    },
+    {
+      "case": "native_heavy",
+      "expected": "miss",
+      "passed": true,
+      "nested_helper_dropped_count": 0,
+      "nested_helper_drop_missed_count": 1,
+      "standardized_reasons": [
+        "native_pinned"
+      ],
+      "sec": 75.96908410001197,
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\rejection_audit\\native_heavy"
+    },
+    {
+      "case": "multi_child",
+      "expected": "miss",
+      "passed": true,
+      "nested_helper_dropped_count": 0,
+      "nested_helper_drop_missed_count": 3,
+      "standardized_reasons": [
+        "not_nested",
+        "unsupported_shape"
+      ],
+      "sec": 20.58768150000833,
+      "profile_dir": "benchmarks\\m2_5_lifecycle_freeze_full\\rejection_audit\\multi_child"
+    }
+  ],
+  "failures": [],
+  "decision": {
+    "lifecycle_status": {
+      "first_wave_stable": true,
+      "second_wave_nested_v1": true,
+      "rejection_audit_complete": true,
+      "regression_detected": false,
+      "safe_to_freeze": true
+    },
+    "lifecycle_value": {
+      "peak_memory_reduction": 100.0,
+      "performance_delta": -1.784,
+      "effective": true,
+      "second_wave_decision": "KEEP"
+    }
+  },
+  "m3_v1_score_contract": {
+    "weights": {
+      "memory_reduction": 0.5,
+      "frame_width_reduction": 0.3,
+      "time_increase": 0.2
+    },
+    "accept_if": "score > 0"
+  }
+}

@@ -1,0 +1,1 @@
+{"output_name": "pos_01_argmax_5_5", "batch_id": "c09de0b8d38545c98f6fe64135a31c4d:batch:1", "created_order_index": 10, "attached_order_index": 13, "last_required_order_index": 13, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 6, "rss_at_attach_mb": 72.2421875, "source_column_name": "___stage_value", "attached_to_working_frame": false}

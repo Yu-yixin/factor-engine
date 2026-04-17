@@ -1,4 +1,24 @@
-from factor_engine.registry import get_function_spec
+from factor_engine.registry import canonical_function_name, get_function_spec
+
+
+def test_alpha101_aliases_resolve_to_existing_function_specs():
+    expected = {
+        "sum": "ts_sum",
+        "stddev": "ts_std",
+        "correlation": "corr",
+        "covariance": "cov",
+        "min": "ts_min",
+        "max": "ts_max",
+    }
+
+    for alias, canonical in expected.items():
+        assert canonical_function_name(alias) == canonical
+        alias_spec = get_function_spec(alias)
+        canonical_spec = get_function_spec(canonical)
+
+        assert alias_spec is canonical_spec
+        assert alias_spec is not None
+        assert alias_spec.name == canonical
 
 
 def test_new_column_functions_are_registered():
@@ -19,6 +39,10 @@ def test_new_column_functions_are_registered():
     assert get_function_spec("ts_min").window_kind == "rolling"
     assert get_function_spec("ts_max").window_kind == "rolling"
     assert get_function_spec("ts_rank").window_kind == "rolling"
+
+
+def test_product_is_not_registered_until_clean_vectorized_rolling_support_exists():
+    assert get_function_spec("product") is None
 
 
 def test_new_boolean_time_series_functions_are_registered():
@@ -90,7 +114,15 @@ def test_existing_time_series_specs_are_complete():
 
 
 def test_cross_sectional_specs_declare_group_requirements():
-    for name in ("demean", "zscore", "rank", "group_demean", "group_zscore", "group_rank"):
+    for name in (
+        "demean",
+        "zscore",
+        "rank",
+        "scale",
+        "group_demean",
+        "group_zscore",
+        "group_rank",
+    ):
         spec = get_function_spec(name)
 
         assert spec is not None
@@ -101,6 +133,8 @@ def test_cross_sectional_specs_declare_group_requirements():
 
 def test_pointwise_and_table_specs_declare_execution_shape():
     where_spec = get_function_spec("where")
+    log_spec = get_function_spec("log")
+    signedpower_spec = get_function_spec("signedpower")
     fft_spec = get_function_spec("fft")
 
     assert where_spec is not None
@@ -108,6 +142,14 @@ def test_pointwise_and_table_specs_declare_execution_shape():
     assert where_spec.needs_code_group is False
     assert where_spec.needs_time_group is False
     assert where_spec.needs_time_order is False
+
+    assert log_spec is not None
+    assert log_spec.execution_kind == "pointwise"
+    assert log_spec.numeric_arg_positions == (0,)
+
+    assert signedpower_spec is not None
+    assert signedpower_spec.execution_kind == "pointwise"
+    assert signedpower_spec.numeric_arg_positions == (0, 1)
 
     assert fft_spec is not None
     assert fft_spec.execution_kind == "table"

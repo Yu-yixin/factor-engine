@@ -1,0 +1,1 @@
+{"output_name": "repeated_heavy", "batch_id": "35fdee70d69f42949777cbacc5d09566:batch:1", "created_order_index": 1, "attached_order_index": 2, "last_required_order_index": 2, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 5934.1796875, "source_column_name": null, "attached_to_working_frame": false}

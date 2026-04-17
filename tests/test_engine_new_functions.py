@@ -27,6 +27,15 @@ def build_grouped_nested_window_df() -> pl.DataFrame:
     )
 
 
+def assert_optional_lists_close(actual: list[object], expected: list[object]) -> None:
+    assert len(actual) == len(expected)
+    for observed, target in zip(actual, expected, strict=True):
+        if observed is None or target is None:
+            assert observed is None and target is None
+            continue
+        assert observed == pytest.approx(target, nan_ok=True)
+
+
 def test_engine_evaluate_ts_min():
     result = FactorEngine().evaluate("ts_min(close, 2)", build_df())
     assert result["result"].to_list() == [10.0, 10.0, 12.0]
@@ -90,6 +99,66 @@ def test_engine_evaluate_scalar_math_helpers():
     assert abs_result["result"].to_list() == [3.0, 0.0, 8.0, None]
     assert clip_result["result"].to_list() == [-1.0, 0.0, 5.0, None]
     assert sign_result["result"].to_list() == [-1.0, 0.0, 1.0, None]
+
+
+def test_engine_evaluate_alpha101_pointwise_helpers():
+    df = pl.DataFrame({"close": [-4.0, 0.0, 1.0, 9.0, None]})
+
+    signedpower_result = FactorEngine().evaluate("signedpower(close, 2)", df)
+    log_result = FactorEngine().evaluate("log(abs(close))", df)
+
+    assert signedpower_result["result"].to_list() == [-16.0, 0.0, 1.0, 81.0, None]
+    assert log_result["result"].to_list()[0] == pytest.approx(1.3862943611)
+    assert log_result["result"].to_list()[1] == float("-inf")
+    assert log_result["result"].to_list()[4] is None
+
+
+def test_engine_evaluate_scale():
+    df = pl.DataFrame(
+        {
+            "time": [1, 1, 2, 2, 3, 3],
+            "code": ["A", "B", "A", "B", "A", "B"],
+            "close": [1.0, -3.0, 2.0, 4.0, None, 5.0],
+        }
+    )
+
+    scale_result = FactorEngine().evaluate("scale(close)", df)
+
+    assert_optional_lists_close(
+        scale_result["result"].to_list(),
+        [0.25, -0.75, 1.0 / 3.0, 2.0 / 3.0, None, 1.0],
+    )
+
+
+def test_engine_aliases_match_canonical_functions_in_evaluate_and_evaluate_many():
+    df = build_df()
+    engine = FactorEngine()
+
+    alias_pairs = [
+        ("sum(close, 2)", "ts_sum(close, 2)"),
+        ("stddev(close, 2)", "ts_std(close, 2)"),
+        ("min(close, 2)", "ts_min(close, 2)"),
+        ("max(close, 2)", "ts_max(close, 2)"),
+        ("correlation(open, close, 2)", "corr(open, close, 2)"),
+        ("covariance(open, close, 2)", "cov(open, close, 2)"),
+    ]
+
+    for alias_expr, canonical_expr in alias_pairs:
+        alias = engine.evaluate(alias_expr, df)["result"].to_list()
+        canonical = engine.evaluate(canonical_expr, df)["result"].to_list()
+        assert_optional_lists_close(alias, canonical)
+
+    many = engine.evaluate_many(
+        [
+            ("alias_sum", "sum(close, 2)"),
+            ("canonical_sum", "ts_sum(close, 2)"),
+            ("alias_nested", "sum(abs(close - open), 2)"),
+            ("canonical_nested", "ts_sum(abs(close - open), 2)"),
+        ],
+        df,
+    )
+    assert many["alias_sum"].to_list() == many["canonical_sum"].to_list()
+    assert many["alias_nested"].to_list() == many["canonical_nested"].to_list()
 
 
 def test_engine_new_functions_keep_result_column_contract():

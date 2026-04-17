@@ -1,0 +1,1 @@
+{"output_name": "out_01", "batch_id": "b55560d539e64d7c86d7b4f101000e56:batch:1", "created_order_index": 10, "attached_order_index": 11, "last_required_order_index": 11, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 7328.640625, "source_column_name": "___stage_value", "attached_to_working_frame": false}

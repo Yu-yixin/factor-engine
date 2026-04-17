@@ -1,0 +1,6 @@
+{
+  "alpha_1": "rank(argmax(signedpower(where(returns < 0, stddev(returns, 20), close), 2), 5)) - 0.5",
+  "alpha_2": "-1 * correlation(rank(delta(log(volume), 2)), rank((close - open) / open), 6)",
+  "alpha_3": "-1 * correlation(rank(open), rank(volume), 10)",
+  "alpha_4": "-1 * ts_rank(rank(low), 9)"
+}

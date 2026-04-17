@@ -15,6 +15,7 @@ from factor_engine.ast_nodes import (
     UnaryOpNode,
     VariableNode,
 )
+from factor_engine.dag import ExpressionDag, ExpressionDagBuilder
 from factor_engine.physical_properties import (
     MATERIALIZATION_EFFECT,
     OperatorContract,
@@ -22,7 +23,7 @@ from factor_engine.physical_properties import (
     satisfies,
 )
 from factor_engine.errors import ArgumentError
-from factor_engine.registry import build_operator_contract, get_function_spec
+from factor_engine.registry import build_operator_contract, canonical_function_name, get_function_spec
 from factor_engine.validator import ExecutionProfile, ValidationResult
 
 
@@ -42,6 +43,7 @@ class StagedCrossSectionStep:
     group_col: str | None = None
     ascending: bool = False
     pct: bool = False
+    scale_to: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -119,12 +121,32 @@ class BatchExecutionPlan:
     staged_prefix_nodes: tuple[BatchStagedPrefixNode, ...]
     staged_nodes: tuple[BatchStagedNode, ...]
     staged_output_bindings: tuple[BatchStagedOutputBinding, ...]
+    dag: ExpressionDag | None = None
 
 
 class ExecutionPlanner:
     def __init__(self, *, time_col: str = "time", code_col: str = "code"):
         self.time_col = time_col
         self.code_col = code_col
+        self.materialization_threshold_mode = "reuse_ge_2"
+        self.recomputation_guardrail_max_expansion = 0
+        self.planner_cse_mode = "baseline"
+        self.fusion_mode = "off"
+
+    def with_materialization_policy(
+        self,
+        *,
+        materialization_threshold_mode: str,
+        recomputation_guardrail_max_expansion: int,
+        planner_cse_mode: str = "baseline",
+        fusion_mode: str = "off",
+    ) -> ExecutionPlanner:
+        planner = ExecutionPlanner(time_col=self.time_col, code_col=self.code_col)
+        planner.materialization_threshold_mode = materialization_threshold_mode
+        planner.recomputation_guardrail_max_expansion = recomputation_guardrail_max_expansion
+        planner.planner_cse_mode = planner_cse_mode
+        planner.fusion_mode = fusion_mode
+        return planner
 
     def build_plan(self, expr: Expr, validation: ValidationResult) -> ExecutionPlan:
         if validation.result_kind == "table":
@@ -195,6 +217,29 @@ class ExecutionPlanner:
             details["staged_steps"] = tuple(step.func_name for step in plan.staged.steps)
         return details
 
+    def build_expression_dag(
+        self,
+        items: Sequence[tuple[str, Expr]],
+        *,
+        materialization_threshold_mode: str = "reuse_ge_2",
+        recomputation_guardrail_max_expansion: int = 0,
+        planner_cse_mode: str = "baseline",
+        fusion_mode: str = "off",
+    ) -> ExpressionDag:
+        return ExpressionDagBuilder(time_col=self.time_col, code_col=self.code_col).build(
+            list(items),
+            materialization_threshold_mode=materialization_threshold_mode,
+            recomputation_guardrail_max_expansion=recomputation_guardrail_max_expansion,
+            planner_cse_mode=planner_cse_mode,
+            fusion_mode=fusion_mode,
+        )
+
+    def inspect_expression_dag(
+        self,
+        items: Sequence[tuple[str, Expr]],
+    ) -> dict[str, object]:
+        return self.build_expression_dag(items).to_inspection()
+
     def expr_uses_segmented_window(self, expr: Expr) -> bool:
         if isinstance(expr, CallNode):
             spec = get_function_spec(expr.name)
@@ -233,9 +278,10 @@ class ExecutionPlanner:
                 self.expr_key(expr.right),
             )
         if isinstance(expr, CallNode):
+            function_name = canonical_function_name(expr.name)
             return (
                 "call",
-                expr.name,
+                function_name,
                 tuple(self.expr_key(arg) for arg in expr.args),
                 tuple(sorted((key, self.expr_key(value)) for key, value in expr.kwargs.items())),
             )
@@ -248,6 +294,7 @@ class ExecutionPlanner:
             step.group_col,
             step.ascending,
             step.pct,
+            step.scale_to,
         )
 
     def staged_chain_key(self, plan: StagedChainPlan) -> tuple:
@@ -383,6 +430,15 @@ class ExecutionPlanner:
             ]
         )
 
+        dag = self.build_expression_dag(
+            [(item.output_name, item.expr) for item in items],
+            materialization_threshold_mode=self.materialization_threshold_mode,
+            recomputation_guardrail_max_expansion=(
+                self.recomputation_guardrail_max_expansion
+            ),
+            planner_cse_mode=self.planner_cse_mode,
+            fusion_mode=self.fusion_mode,
+        )
         return BatchExecutionPlan(
             compiled_items=tuple(compiled_items),
             segmented_items=tuple(segmented_items),
@@ -393,6 +449,7 @@ class ExecutionPlanner:
             staged_prefix_nodes=staged_prefix_node_items,
             staged_nodes=staged_nodes,
             staged_output_bindings=tuple(staged_output_bindings),
+            dag=dag,
         )
 
     def is_positional_ordered_root(self, expr: Expr) -> bool:
@@ -449,12 +506,13 @@ class ExecutionPlanner:
             return None
 
         window = self._read_positive_integer_literal(expr.args[1])
-        minimum_window = self._minimum_window_for_single_input_ordered_root(expr.name)
+        function_name = canonical_function_name(expr.name)
+        minimum_window = self._minimum_window_for_single_input_ordered_root(function_name)
         if window is None or window < minimum_window:
             return None
 
         return MaterializedOrderedPlan(
-            func_name=expr.name,
+            func_name=function_name,
             input_exprs=(expr.args[0],),
             window=window,
         )
@@ -465,7 +523,8 @@ class ExecutionPlanner:
         *,
         parent_contract: OperatorContract,
     ) -> MaterializedOrderedPlan | None:
-        if expr.name not in {"corr", "cov"}:
+        function_name = canonical_function_name(expr.name)
+        if function_name not in {"corr", "cov"}:
             return None
         if len(expr.args) != 3 or expr.kwargs:
             return None
@@ -485,7 +544,7 @@ class ExecutionPlanner:
             return None
 
         return MaterializedOrderedPlan(
-            func_name=expr.name,
+            func_name=function_name,
             input_exprs=(expr.args[0], expr.args[1]),
             window=window,
         )
@@ -525,21 +584,34 @@ class ExecutionPlanner:
         if not isinstance(expr, CallNode):
             return None
 
-        if expr.name in {"demean", "zscore"}:
+        function_name = canonical_function_name(expr.name)
+
+        if function_name in {"demean", "zscore"}:
             if len(expr.args) != 1 or expr.kwargs:
                 return None
             return _MatchedStagedRoot(
                 source_expr=expr.args[0],
-                step=StagedCrossSectionStep(expr.name),
+                step=StagedCrossSectionStep(function_name),
             )
 
-        if expr.name == "rank":
+        if function_name == "scale":
+            if len(expr.args) not in {1, 2} or expr.kwargs:
+                return None
+            scale_to = 1.0
+            if len(expr.args) == 2:
+                scale_to = self._read_number_literal(expr.args[1], default=1.0)
+            return _MatchedStagedRoot(
+                source_expr=expr.args[0],
+                step=StagedCrossSectionStep(function_name, scale_to=scale_to),
+            )
+
+        if function_name == "rank":
             if len(expr.args) != 1:
                 return None
             return _MatchedStagedRoot(
                 source_expr=expr.args[0],
                 step=StagedCrossSectionStep(
-                    expr.name,
+                    function_name,
                     ascending=self._read_boolean_kwarg(
                         expr,
                         kwarg_name="ascending",
@@ -553,7 +625,7 @@ class ExecutionPlanner:
                 ),
             )
 
-        if expr.name in {"group_demean", "group_zscore"}:
+        if function_name in {"group_demean", "group_zscore"}:
             if len(expr.args) != 2 or expr.kwargs:
                 return None
             group_expr = expr.args[1]
@@ -562,12 +634,12 @@ class ExecutionPlanner:
             return _MatchedStagedRoot(
                 source_expr=expr.args[0],
                 step=StagedCrossSectionStep(
-                    expr.name,
+                    function_name,
                     group_col=group_expr.name,
                 ),
             )
 
-        if expr.name == "group_rank":
+        if function_name == "group_rank":
             if len(expr.args) != 2:
                 return None
             group_expr = expr.args[1]
@@ -576,7 +648,7 @@ class ExecutionPlanner:
             return _MatchedStagedRoot(
                 source_expr=expr.args[0],
                 step=StagedCrossSectionStep(
-                    expr.name,
+                    function_name,
                     group_col=group_expr.name,
                     ascending=self._read_boolean_kwarg(
                         expr,
@@ -592,6 +664,11 @@ class ExecutionPlanner:
             )
 
         return None
+
+    def _read_number_literal(self, expr: Expr, *, default: float) -> float:
+        if not isinstance(expr, NumberNode):
+            return default
+        return float(expr.value)
 
     def _read_boolean_kwarg(
         self,

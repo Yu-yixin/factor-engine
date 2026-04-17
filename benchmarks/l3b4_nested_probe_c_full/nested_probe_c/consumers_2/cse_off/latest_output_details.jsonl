@@ -1,0 +1,1 @@
+{"output_name": "nested_probe_c", "batch_id": "c9bf4eb965c74d7d9f297b1b812404c5:batch:1", "created_order_index": 1, "attached_order_index": 2, "last_required_order_index": 2, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 5968.125, "source_column_name": null, "attached_to_working_frame": false}

@@ -1,0 +1,1 @@
+{"output_name": "multi_shared_nodes", "batch_id": "5a5c79790bd14aa3857402c97cbb6c2e:batch:1", "created_order_index": 1, "attached_order_index": 4, "last_required_order_index": 4, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 18996.625, "source_column_name": null, "attached_to_working_frame": false}

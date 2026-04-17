@@ -1,0 +1,157 @@
+[
+  {
+    "output": "rank_volume",
+    "expression": "rank(volume)",
+    "family": "shared"
+  },
+  {
+    "output": "rank_open",
+    "expression": "rank(open)",
+    "family": "shared"
+  },
+  {
+    "output": "rank_low",
+    "expression": "rank(low)",
+    "family": "shared"
+  },
+  {
+    "output": "rank_close",
+    "expression": "rank(close)",
+    "family": "shared"
+  },
+  {
+    "output": "rank_high",
+    "expression": "rank(high)",
+    "family": "shared"
+  },
+  {
+    "output": "a2_log_volume",
+    "expression": "log(volume)",
+    "family": "alpha_2"
+  },
+  {
+    "output": "a2_delta_log_volume_2",
+    "expression": "delta(a2_log_volume, 2)",
+    "family": "alpha_2"
+  },
+  {
+    "output": "a2_left_rank",
+    "expression": "rank(a2_delta_log_volume_2)",
+    "family": "alpha_2"
+  },
+  {
+    "output": "a2_intraday_return",
+    "expression": "(close - open) / open",
+    "family": "alpha_2"
+  },
+  {
+    "output": "a2_right_rank",
+    "expression": "rank(a2_intraday_return)",
+    "family": "alpha_2"
+  },
+  {
+    "output": "alpha_2",
+    "expression": "-1 * correlation(a2_left_rank, a2_right_rank, 6)",
+    "family": "alpha_2"
+  },
+  {
+    "output": "alpha_3",
+    "expression": "-1 * correlation(rank_open, rank_volume, 10)",
+    "family": "alpha_3"
+  },
+  {
+    "output": "alpha_4",
+    "expression": "-1 * ts_rank(rank_low, 9)",
+    "family": "alpha_4"
+  },
+  {
+    "output": "alpha_6",
+    "expression": "-1 * correlation(open, volume, 10)",
+    "family": "alpha_6"
+  },
+  {
+    "output": "delta_close_1",
+    "expression": "delta(close, 1)",
+    "family": "alpha_9_10_12"
+  },
+  {
+    "output": "delta_volume_1",
+    "expression": "delta(volume, 1)",
+    "family": "alpha_12"
+  },
+  {
+    "output": "a9_min_delta_5",
+    "expression": "ts_min(delta_close_1, 5)",
+    "family": "alpha_9"
+  },
+  {
+    "output": "a9_max_delta_5",
+    "expression": "ts_max(delta_close_1, 5)",
+    "family": "alpha_9"
+  },
+  {
+    "output": "alpha_9",
+    "expression": "where(0 < a9_min_delta_5, delta_close_1, where(a9_max_delta_5 < 0, delta_close_1, -1 * delta_close_1))",
+    "family": "alpha_9"
+  },
+  {
+    "output": "a10_min_delta_4",
+    "expression": "ts_min(delta_close_1, 4)",
+    "family": "alpha_10"
+  },
+  {
+    "output": "a10_max_delta_4",
+    "expression": "ts_max(delta_close_1, 4)",
+    "family": "alpha_10"
+  },
+  {
+    "output": "a10_raw",
+    "expression": "where(0 < a10_min_delta_4, delta_close_1, where(a10_max_delta_4 < 0, delta_close_1, -1 * delta_close_1))",
+    "family": "alpha_10"
+  },
+  {
+    "output": "alpha_10",
+    "expression": "rank(a10_raw)",
+    "family": "alpha_10"
+  },
+  {
+    "output": "alpha_12",
+    "expression": "sign(delta_volume_1) * (-1 * delta_close_1)",
+    "family": "alpha_12"
+  },
+  {
+    "output": "a13_cov",
+    "expression": "covariance(rank_close, rank_volume, 5)",
+    "family": "alpha_13"
+  },
+  {
+    "output": "alpha_13",
+    "expression": "-1 * rank(a13_cov)",
+    "family": "alpha_13"
+  },
+  {
+    "output": "a16_cov",
+    "expression": "covariance(rank_high, rank_volume, 5)",
+    "family": "alpha_16"
+  },
+  {
+    "output": "alpha_16",
+    "expression": "-1 * rank(a16_cov)",
+    "family": "alpha_16"
+  },
+  {
+    "output": "a23_sum_high_20",
+    "expression": "sum(high, 20)",
+    "family": "alpha_23"
+  },
+  {
+    "output": "a23_delta_high_2",
+    "expression": "delta(high, 2)",
+    "family": "alpha_23"
+  },
+  {
+    "output": "alpha_23",
+    "expression": "where((a23_sum_high_20 / 20) < high, -1 * a23_delta_high_2, 0)",
+    "family": "alpha_23"
+  }
+]

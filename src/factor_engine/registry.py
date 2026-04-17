@@ -381,6 +381,12 @@ FUNCTION_REGISTRY: dict[str, FunctionSpec] = {
         requires_order_by=("$time",),
     ),
     "is_null": _spec("is_null", 1, 1),
+    "log": _spec(
+        "log",
+        1,
+        1,
+        numeric_arg_positions=(0,),
+    ),
     "kurt": _spec(
         "kurt",
         2,
@@ -572,6 +578,12 @@ FUNCTION_REGISTRY: dict[str, FunctionSpec] = {
         1,
         numeric_arg_positions=(0,),
     ),
+    "signedpower": _spec(
+        "signedpower",
+        2,
+        2,
+        numeric_arg_positions=(0, 1),
+    ),
     "skew": _spec(
         "skew",
         2,
@@ -660,6 +672,17 @@ FUNCTION_REGISTRY: dict[str, FunctionSpec] = {
         requires_order_by=("$time",),
         accepts_materialized_input=True,
         is_single_input_ordered_root=True,
+    ),
+    "scale": _spec(
+        "scale",
+        1,
+        2,
+        numeric_arg_positions=(0, 1),
+        requires_time_col=True,
+        execution_kind="cross_sectional",
+        needs_time_group=True,
+        requires_partition_by=("$time",),
+        accepts_materialized_input=True,
     ),
     "ts_mean": _spec(
         "ts_mean",
@@ -754,6 +777,16 @@ FUNCTION_REGISTRY: dict[str, FunctionSpec] = {
         requires_partition_by=("$time",),
         accepts_materialized_input=True,
     ),
+}
+
+
+FUNCTION_ALIASES: dict[str, str] = {
+    "sum": "ts_sum",
+    "stddev": "ts_std",
+    "correlation": "corr",
+    "covariance": "cov",
+    "min": "ts_min",
+    "max": "ts_max",
 }
 
 
@@ -890,5 +923,9 @@ def get_ordered_audit_matrix() -> tuple[OrderedAuditEntry, ...]:
     return ORDERED_AUDIT_MATRIX
 
 
+def canonical_function_name(name: str) -> str:
+    return FUNCTION_ALIASES.get(name, name)
+
+
 def get_function_spec(name: str) -> FunctionSpec | None:
-    return FUNCTION_REGISTRY.get(name)
+    return FUNCTION_REGISTRY.get(canonical_function_name(name))

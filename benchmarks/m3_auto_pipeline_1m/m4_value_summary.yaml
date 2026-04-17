@@ -1,0 +1,22 @@
+accepted_candidates:
+  - m4_cse_expand_repeated_subgraphs
+  - m4_fuse_deep_operator_chains
+rejected_candidates:
+dominant_bottleneck_class: wide_fanout
+required_candidate_classes_tested: true
+structure_is_primary_bottleneck: true
+optimization_space_exhausted: true
+freeze_path: strong_success
+safe_to_consider_freeze: true
+safe_to_freeze: true
+m4_frozen: true
+freeze_decision: "M4 frozen under the strong-success path. Keep accepted CSE expansion and unary-chain fusion; defer elimination, batching, and heavy-path rewrite to a future M4+ cycle only if reopening conditions are met."
+deferred_candidates:
+  - m4_eliminate_materialized_intermediates
+  - m4_batch_wide_fanout_nodes
+  - m4_rewrite_heavy_execution_path
+reopen_conditions:
+  - "new workload shows materially larger wide_fanout pressure"
+  - "accepted CSE or fusion candidate becomes unstable on real data"
+  - "refreshed structural report identifies a new dominant family"
+  - "a deliberate M4+ cycle is opened with a new proposal/executable/score contract"

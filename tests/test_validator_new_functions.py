@@ -71,7 +71,10 @@ def test_validate_new_functions_accept_numeric_expressions():
     validate_with_df("seglen_sum(close - open, [1, 1])", df)
     validate_with_df("abs(close - open)", df)
     validate_with_df("clip(close - open, 0, 3)", df)
+    validate_with_df("log(close - open)", df)
+    validate_with_df("scale(close - open)", df)
     validate_with_df("sign(close - open)", df)
+    validate_with_df("signedpower(close - open, 2)", df)
 
 
 def test_validate_new_functions_reject_non_numeric_columns():
@@ -95,6 +98,12 @@ def test_validate_new_functions_reject_non_numeric_columns():
 
     with pytest.raises(ArgumentError, match="numeric input column"):
         validate_with_df("ts_median(label, 2)", df)
+
+    with pytest.raises(ArgumentError, match="numeric input column"):
+        validate_with_df("scale(label)", df)
+
+    with pytest.raises(ArgumentError, match="numeric input column"):
+        validate_with_df("log(label)", df)
 
     with pytest.raises(ArgumentError, match="numeric input column"):
         validate_with_df("argmax(flag, 2)", df)
@@ -123,6 +132,9 @@ def test_validate_new_functions_reject_non_numeric_columns():
     with pytest.raises(ArgumentError, match="numeric input column"):
         validate_with_df("sign(label)", df)
 
+    with pytest.raises(ArgumentError, match="numeric input column"):
+        validate_with_df("signedpower(label, 2)", df)
+
 
 def test_validate_new_functions_reject_boolean_expressions():
     df = pl.DataFrame(
@@ -141,6 +153,9 @@ def test_validate_new_functions_reject_boolean_expressions():
         validate_with_df("ts_max(close > open, 5)", df)
 
     with pytest.raises(ArgumentError, match="numeric input expression"):
+        validate_with_df("scale(close > open)", df)
+
+    with pytest.raises(ArgumentError, match="numeric input expression"):
         validate_with_df("seg_mean(close > open, 2)", df)
 
     with pytest.raises(ArgumentError, match="numeric input expression"):
@@ -154,6 +169,9 @@ def test_validate_new_functions_reject_boolean_expressions():
 
     with pytest.raises(ArgumentError, match="numeric input expression"):
         validate_with_df("sign(close > open)", df)
+
+    with pytest.raises(ArgumentError, match="numeric input expression"):
+        validate_with_df("signedpower(close > open, 2)", df)
 
 
 def test_validate_boolean_time_series_functions_reject_numeric_inputs():
@@ -202,6 +220,9 @@ def test_validate_new_functions_require_time_and_code_context():
     with pytest.raises(ArgumentError, match="time column"):
         validate_with_df("argmax(close, 5)", df)
 
+    with pytest.raises(ArgumentError, match="time column"):
+        validate_with_df("scale(close)", df)
+
 
 def test_validate_new_functions_require_correct_argument_count():
     df = pl.DataFrame(
@@ -223,6 +244,29 @@ def test_validate_new_functions_require_correct_argument_count():
 
     with pytest.raises(ArgumentError, match="ts_median"):
         validate_with_df("ts_median(close)", df)
+
+    with pytest.raises(ArgumentError, match="scale"):
+        validate_with_df("scale(close, 1, 2)", df)
+
+    with pytest.raises(ArgumentError, match="signedpower"):
+        validate_with_df("signedpower(close)", df)
+
+
+def test_validate_alpha101_literal_contracts():
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "code": ["A", "A", "A"],
+            "close": [1.0, 2.0, 3.0],
+            "open": [1.0, 1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ArgumentError, match="scalar numeric literal"):
+        validate_with_df("scale(close, open)", df)
+
+    with pytest.raises(ArgumentError, match="scalar numeric literal"):
+        validate_with_df("signedpower(close, open)", df)
 
 
 def test_validate_segmented_function_requires_positive_integer_literal():

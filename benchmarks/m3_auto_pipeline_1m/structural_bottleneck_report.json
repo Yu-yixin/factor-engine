@@ -1,0 +1,209 @@
+{
+  "repeated_subgraphs": [
+    {
+      "signature": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))",
+      "occurrences": 8,
+      "nodes": [
+        "n3",
+        "n5"
+      ],
+      "estimated_helper_bytes": 64000000,
+      "estimated_compute_weight": 447.92269993922673
+    },
+    {
+      "signature": "('call', 'ts_mean', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), ())",
+      "occurrences": 6,
+      "nodes": [
+        "n3",
+        "n7"
+      ],
+      "estimated_helper_bytes": 48000000,
+      "estimated_compute_weight": 149.6233000070788
+    },
+    {
+      "signature": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('call', 'ts_mean', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), ()), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))",
+      "occurrences": 6,
+      "nodes": [
+        "n4",
+        "n6"
+      ],
+      "estimated_helper_bytes": 48000000,
+      "estimated_compute_weight": 500.44169995817356
+    },
+    {
+      "signature": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'open'), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))",
+      "occurrences": 2,
+      "nodes": [
+        "n6"
+      ],
+      "estimated_helper_bytes": 16000000,
+      "estimated_compute_weight": 90.32010001828894
+    }
+  ],
+  "deep_chains": [
+    {
+      "chain_id": "n5->n6",
+      "depth": 2,
+      "nodes": [
+        "n5",
+        "n6"
+      ],
+      "materialized_hops": 2,
+      "transient_hops": 0,
+      "estimated_chain_pressure": 32000000
+    },
+    {
+      "chain_id": "n1->n3->n4",
+      "depth": 3,
+      "nodes": [
+        "n1",
+        "n3",
+        "n4"
+      ],
+      "materialized_hops": 2,
+      "transient_hops": 1,
+      "estimated_chain_pressure": 32000000
+    },
+    {
+      "chain_id": "n1->n3->n6",
+      "depth": 3,
+      "nodes": [
+        "n1",
+        "n3",
+        "n6"
+      ],
+      "materialized_hops": 2,
+      "transient_hops": 1,
+      "estimated_chain_pressure": 32000000
+    },
+    {
+      "chain_id": "n1->n3->n5",
+      "depth": 3,
+      "nodes": [
+        "n1",
+        "n3",
+        "n5"
+      ],
+      "materialized_hops": 2,
+      "transient_hops": 1,
+      "estimated_chain_pressure": 32000000
+    },
+    {
+      "chain_id": "n1->n3->n7",
+      "depth": 3,
+      "nodes": [
+        "n1",
+        "n3",
+        "n7"
+      ],
+      "materialized_hops": 2,
+      "transient_hops": 1,
+      "estimated_chain_pressure": 32000000
+    }
+  ],
+  "wide_fanout_nodes": [
+    {
+      "node_id": "n3",
+      "fanout_degree": 2,
+      "child_nodes": [],
+      "estimated_fanout_pressure": 256000000,
+      "identity": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))",
+      "occurrences": 8
+    },
+    {
+      "node_id": "n3",
+      "fanout_degree": 3,
+      "child_nodes": [],
+      "estimated_fanout_pressure": 224000000,
+      "identity": "('call', 'ts_mean', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), ())",
+      "occurrences": 6
+    },
+    {
+      "node_id": "n4",
+      "fanout_degree": 2,
+      "child_nodes": [
+        "__dag_node"
+      ],
+      "estimated_fanout_pressure": 192000000,
+      "identity": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('call', 'ts_mean', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), ()), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))",
+      "occurrences": 6
+    },
+    {
+      "node_id": "n6",
+      "fanout_degree": 2,
+      "child_nodes": [],
+      "estimated_fanout_pressure": 64000000,
+      "identity": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'open'), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))",
+      "occurrences": 2
+    }
+  ],
+  "heavy_paths": [
+    {
+      "path_id": "n1->n3->n6",
+      "nodes": [
+        "n1",
+        "n3",
+        "n6"
+      ],
+      "estimated_memory_weight": 16000000,
+      "estimated_time_weight": 139.82409998425283,
+      "combined_pressure_score": 157.82409998425283,
+      "identity": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('call', 'ts_mean', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), ()), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))"
+    },
+    {
+      "path_id": "n1->n3->n4",
+      "nodes": [
+        "n1",
+        "n3",
+        "n4"
+      ],
+      "estimated_memory_weight": 16000000,
+      "estimated_time_weight": 112.98399997758679,
+      "combined_pressure_score": 130.9839999775868,
+      "identity": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('call', 'ts_mean', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), ()), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))"
+    },
+    {
+      "path_id": "n1->n3->n4",
+      "nodes": [
+        "n1",
+        "n3",
+        "n4"
+      ],
+      "estimated_memory_weight": 16000000,
+      "estimated_time_weight": 105.51910000503995,
+      "combined_pressure_score": 123.51910000503995,
+      "identity": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('call', 'ts_mean', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), ()), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))"
+    },
+    {
+      "path_id": "n1->n3",
+      "nodes": [
+        "n1",
+        "n3"
+      ],
+      "estimated_memory_weight": 16000000,
+      "estimated_time_weight": 63.80730000091717,
+      "combined_pressure_score": 81.80730000091717,
+      "identity": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))"
+    },
+    {
+      "path_id": "n1->n3",
+      "nodes": [
+        "n1",
+        "n3"
+      ],
+      "estimated_memory_weight": 16000000,
+      "estimated_time_weight": 62.306599982548505,
+      "combined_pressure_score": 80.3065999825485,
+      "identity": "('call', 'ts_rank', ('function_context', 'time_series', 'rolling', True, 'time', True, 'ths_code'), (('var', 'close'), ('number', 10)), (('ascending', ('boolean', False)), ('pct', ('boolean', False))))"
+    }
+  ],
+  "dominant_bottleneck_class": "wide_fanout",
+  "proposal_priority": [
+    "m4_cse_expand_repeated_subgraphs",
+    "m4_fuse_deep_operator_chains",
+    "m4_eliminate_materialized_intermediates",
+    "m4_batch_wide_fanout_nodes",
+    "m4_rewrite_heavy_execution_path"
+  ],
+  "structural_observability_complete": true
+}

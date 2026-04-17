@@ -1,0 +1,87 @@
+[
+  {
+    "output": "returns",
+    "expression": "close / delay(close, 1) - 1",
+    "note": "prepared directly by Polars, grouped by ths_code and ordered by time"
+  },
+  {
+    "output": "a1_std_returns_20",
+    "expression": "stddev(returns, 20)",
+    "note": "Alpha#1 stage"
+  },
+  {
+    "output": "a1_choice",
+    "expression": "where(returns < 0, a1_std_returns_20, close)",
+    "note": "Alpha#1 stage"
+  },
+  {
+    "output": "a1_signed_power",
+    "expression": "signedpower(a1_choice, 2)",
+    "note": "Alpha#1 stage"
+  },
+  {
+    "output": "a1_argmax_5",
+    "expression": "argmax(a1_signed_power, 5)",
+    "note": "Alpha#1 stage"
+  },
+  {
+    "output": "alpha_1",
+    "expression": "rank(a1_argmax_5) - 0.5",
+    "note": "Alpha#1 final"
+  },
+  {
+    "output": "a2_log_volume",
+    "expression": "log(volume)",
+    "note": "Alpha#2 stage"
+  },
+  {
+    "output": "a2_delta_log_volume_2",
+    "expression": "delta(a2_log_volume, 2)",
+    "note": "Alpha#2 stage"
+  },
+  {
+    "output": "a2_left_rank",
+    "expression": "rank(a2_delta_log_volume_2)",
+    "note": "Alpha#2 stage"
+  },
+  {
+    "output": "a2_intraday_return",
+    "expression": "(close - open) / open",
+    "note": "Alpha#2 stage"
+  },
+  {
+    "output": "a2_right_rank",
+    "expression": "rank(a2_intraday_return)",
+    "note": "Alpha#2 stage"
+  },
+  {
+    "output": "alpha_2",
+    "expression": "-1 * correlation(a2_left_rank, a2_right_rank, 6)",
+    "note": "Alpha#2 final"
+  },
+  {
+    "output": "a3_open_rank",
+    "expression": "rank(open)",
+    "note": "Alpha#3 stage"
+  },
+  {
+    "output": "a3_volume_rank",
+    "expression": "rank(volume)",
+    "note": "Alpha#3 stage"
+  },
+  {
+    "output": "alpha_3",
+    "expression": "-1 * correlation(a3_open_rank, a3_volume_rank, 10)",
+    "note": "Alpha#3 final"
+  },
+  {
+    "output": "a4_low_rank",
+    "expression": "rank(low)",
+    "note": "Alpha#4 stage"
+  },
+  {
+    "output": "alpha_4",
+    "expression": "-1 * ts_rank(a4_low_rank, 9)",
+    "note": "Alpha#4 final"
+  }
+]

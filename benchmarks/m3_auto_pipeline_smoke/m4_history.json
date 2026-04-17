@@ -1,0 +1,42 @@
+[
+  {
+    "id": "m4_cse_expand_repeated_subgraphs",
+    "score": -0.18792785561747713,
+    "accepted": false,
+    "memory_reduction": -0.4223924307276414,
+    "frame_width_reduction": 0.0,
+    "time_increase": -0.11634179873171777,
+    "candidate_status": "executable",
+    "recomputation_expansion_delta": 0.0,
+    "phase": "m4_bridge",
+    "candidate_class": "cse_expansion",
+    "selected_family": "rolling_neutral_add_input",
+    "matched_groups": 2,
+    "reused_groups": 2,
+    "estimated_helper_bytes_saved": 16000,
+    "correctness_pass": true,
+    "audit_explainable": true,
+    "isolation_pass": true,
+    "decision": "REJECT"
+  },
+  {
+    "id": "m4_fuse_deep_operator_chains",
+    "score": 0.450292297610967,
+    "accepted": true,
+    "memory_reduction": -0.41978364996501805,
+    "frame_width_reduction": 0.0,
+    "time_increase": -3.30092061296738,
+    "candidate_status": "executable",
+    "recomputation_expansion_delta": 0.0,
+    "phase": "m4_bridge",
+    "candidate_class": "node_fusion",
+    "selected_family": "rolling_unary_chain_ts_mean_into_ts_rank",
+    "matched_groups": 2,
+    "reused_groups": 2,
+    "estimated_helper_bytes_saved": 16000,
+    "correctness_pass": true,
+    "audit_explainable": true,
+    "isolation_pass": true,
+    "decision": "ACCEPT"
+  }
+]

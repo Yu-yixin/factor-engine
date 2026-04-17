@@ -25,6 +25,9 @@ The profile output directory contains:
 - `latest_stage_details.jsonl`
 - `latest_stage_events.jsonl`
 - `benchmark_report.md`
+- `latest_output_details.jsonl`
+- `latest_native_buffer_details.jsonl`
+- `latest_memory_events.jsonl`
 
 The event stream records:
 
@@ -32,8 +35,21 @@ The event stream records:
 - `stage_consumed`
 - `stage_dropped` when lifecycle sweep is enabled
 - `batch_end_stage_snapshot`
+- `output_created`
+- `output_attached`
+- `native_buffer_created`
+- `native_buffer_attached`
+- `native_buffer_released`
 
 V1 records only explicit stages that are materialized as columns. It does not attempt to inspect implicit subtrees inside a compiled Polars expression.
+
+M1 profiling adds memory attribution fields at run and batch level:
+
+- frame: `base_frame_col_count`, `peak_frame_col_count`, `final_frame_col_count`, `peak_stage_col_count`, `peak_output_col_count`
+- outputs: `alive_output_at_batch_end_count`, `late_alive_output_count`
+- native buffers: `native_output_buffer_count`, `peak_native_buffer_bytes_estimate`, `native_buffer_release_lag`
+- reuse balance: planned reusable stages, retained-for-reuse stages, retained-for-output stages, avoided recomputation, recomputed stages
+- parallel: `parallel_enabled`, `parallel_worker_count`, `parallel_buffer_peak_estimate`
 
 ## V2 Lifecycle
 
@@ -51,6 +67,8 @@ The stage registry tracks:
 - alive/dropped status
 
 The current V2 sweep is deliberately conservative. It sweeps after positional/materialized route items and again before ordered output restoration. This keeps frame/cache/registry state synchronized while avoiding aggressive per-consume deletion.
+
+M1 also defers ordered-batch output attach. User outputs are tracked in an output registry while their source stages remain protected only until restore/finalize. The working ordered frame no longer grows by one output column per expression; output columns are selected and renamed during the final restore step, then appended to the original frame.
 
 ## Drop Conditions
 
@@ -139,3 +157,25 @@ P2.1 profiling records planned/actual lifecycle fields:
 - stage-level: planned consumer count, planned last use, actual consume count, recomputed-after-drop, kept-alive-for-planned-reuse, dropped-after-planned-last-use
 - batch/run-level: planned reusable stages, avoided recomputation, recomputed stages, late-alive stages
 - events: `planned_stage_registered`, `planned_stage_reused`, `planned_last_use_reached`, `recomputed_stage_detected`
+
+## M1 Memory Model Benchmark
+
+Run the fixed M1 memory attribution workload:
+
+```powershell
+$env:PYTHONPATH="src;.venv\Lib\site-packages"
+python examples\benchmark_m1_memory_model.py --expr-counts 8,16,20 --lifecycle
+```
+
+For real parquet data:
+
+```powershell
+$env:PYTHONPATH="src;.venv\Lib\site-packages"
+python examples\benchmark_m1_memory_model.py --data data\minute_2026_03.parquet --rows 500000 --expr-counts 8,16,20 --code-col ths_code --lifecycle
+```
+
+The benchmark writes `benchmarks/m1_memory_model/m1_memory_model_report.md` plus per-workload profile directories for:
+
+- output retention pressure
+- frame pressure
+- native buffer pressure

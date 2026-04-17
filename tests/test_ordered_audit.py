@@ -93,6 +93,7 @@ def test_ordered_audit_split_step_matches_nested(
         ("ts_mean(rank(close), 2)", "materialized_ordered"),
         ("ts_std(rank(close), 2)", "materialized_ordered"),
         ("ts_sum(rank(close), 2)", "materialized_ordered"),
+        ("sum(rank(close), 2)", "materialized_ordered"),
         ("ts_min(rank(close), 2)", "materialized_ordered"),
         ("ts_max(rank(close), 2)", "materialized_ordered"),
         ("ts_median(rank(close), 2)", "materialized_ordered"),
@@ -114,7 +115,9 @@ def test_ordered_audit_routes_audited_roots_to_safe_path(expr_text: str, expecte
     ("expr_text", "expected_func", "expected_input_count", "expected_window"),
     [
         ("ts_mean(rank(close), 2)", "ts_mean", 1, 2),
+        ("sum(rank(close), 2)", "ts_sum", 1, 2),
         ("corr(rank(open), rank(volume), 3)", "corr", 2, 3),
+        ("correlation(rank(open), rank(volume), 3)", "corr", 2, 3),
         ("argmax(rank(close), 2)", "argmax", 1, 2),
         ("ts_rank(rank(close), 2)", "ts_rank", 1, 2),
     ],
@@ -131,6 +134,31 @@ def test_ordered_audit_route_trace_is_explicit(
     assert trace["materialized_func"] == expected_func
     assert trace["materialized_input_count"] == expected_input_count
     assert trace["materialized_window"] == expected_window
+
+
+@pytest.mark.parametrize(
+    ("alias_expr", "canonical_expr"),
+    [
+        ("sum(rank(close), 2)", "ts_sum(rank(close), 2)"),
+        ("stddev(rank(close), 2)", "ts_std(rank(close), 2)"),
+        ("min(rank(close), 2)", "ts_min(rank(close), 2)"),
+        ("max(rank(close), 2)", "ts_max(rank(close), 2)"),
+        ("correlation(rank(open), rank(volume), 3)", "corr(rank(open), rank(volume), 3)"),
+        ("covariance(rank(open), rank(volume), 3)", "cov(rank(open), rank(volume), 3)"),
+    ],
+)
+def test_alias_route_trace_matches_canonical_ordered_function(
+    alias_expr: str,
+    canonical_expr: str,
+):
+    alias_trace = FactorEngine().inspect_plan(alias_expr, build_df())
+    canonical_trace = FactorEngine().inspect_plan(canonical_expr, build_df())
+
+    assert alias_trace["route"] == canonical_trace["route"]
+    assert alias_trace["root_window_kind"] == canonical_trace["root_window_kind"]
+    assert alias_trace["materialized_func"] == canonical_trace["materialized_func"]
+    assert alias_trace["materialized_input_count"] == canonical_trace["materialized_input_count"]
+    assert alias_trace["materialized_window"] == canonical_trace["materialized_window"]
 
 
 def test_ordered_audit_marks_positional_roots_with_positional_window_kind():

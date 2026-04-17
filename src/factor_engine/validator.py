@@ -221,6 +221,7 @@ class Validator:
 
         self._validate_required_columns(spec)
         self._validate_window_arguments(spec, expr)
+        self._validate_literal_contracts(expr)
 
         if spec.arg_rule == "variable_only":
             self._validate_variable_only_arguments(spec, expr)
@@ -262,6 +263,15 @@ class Validator:
             return
 
         self._expect_positive_integer_literal(expr.args[1], expr.name)
+
+    def _validate_literal_contracts(self, expr: CallNode) -> None:
+        if expr.name in {"scale", "signedpower"} and len(expr.args) >= 2:
+            self._expect_scalar_number_literal(expr.args[1], expr.name)
+
+    def _expect_scalar_number_literal(self, expr: Expr, func_name: str) -> float:
+        if not isinstance(expr, NumberNode):
+            raise ArgumentError(f"Function '{func_name}' requires a scalar numeric literal")
+        return float(expr.value)
 
     def _expect_positive_integer_literal(self, expr: Expr, func_name: str) -> int:
         if not isinstance(expr, NumberNode):
@@ -513,6 +523,7 @@ class Validator:
                 "clip",
                 "corr",
                 "cov",
+                "log",
                 "delta",
                 "demean",
                 "group_demean",
@@ -521,6 +532,7 @@ class Validator:
                 "kurt",
                 "pct_change",
                 "rank",
+                "scale",
                 "seg_count",
                 "seglen_count",
                 "seglen_mean",
@@ -528,6 +540,7 @@ class Validator:
                 "seg_mean",
                 "seg_sum",
                 "sign",
+                "signedpower",
                 "skew",
                 "ts_count",
                 "ts_max",

@@ -62,6 +62,9 @@ def summarize_phases(profile_dir: Path) -> dict[str, object]:
         "total_time_sec": run["total_time_sec"],
         "peak_rss_mb": run["peak_rss_mb"],
         "peak_frame_col_count": run["peak_frame_col_count"],
+        "peak_output_col_count": run.get("peak_output_col_count", 0),
+        "peak_native_buffer_bytes_estimate": run.get("peak_native_buffer_bytes_estimate", 0),
+        "native_buffer_release_lag": run.get("native_buffer_release_lag", 0),
         "phase_count": len(phases),
         "child_expr_total_ms": total_child,
         "positional_total_ms": total_positional,
@@ -134,13 +137,16 @@ def main() -> None:
         f"- rows: `{df.height}`",
         f"- lifecycle: `{args.lifecycle}`",
         "",
-        "| exprs | total sec | peak rss mb | peak cols | child ms | bridge ms | positional ms | scan ms | attach ms | python | native | low-copy | parallel |",
-        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- |",
+        "| exprs | total sec | peak rss mb | peak cols | peak output cols | native peak bytes | release lag | child ms | bridge ms | positional ms | scan ms | attach ms | python | native | low-copy | parallel |",
+        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- |",
     ]
     for item in summaries:
         lines.append(
             f"| {item['expression_count']} | {float(item['total_time_sec']):.6f} | "
             f"{float(item['peak_rss_mb']):.2f} | {item['peak_frame_col_count']} | "
+            f"{item['peak_output_col_count']} | "
+            f"{item['peak_native_buffer_bytes_estimate']} | "
+            f"{item['native_buffer_release_lag']} | "
             f"{float(item['child_expr_total_ms']):.3f} | "
             f"{float(item['positional_to_list_total_ms']):.3f} | "
             f"{float(item['positional_total_ms']):.3f} | "

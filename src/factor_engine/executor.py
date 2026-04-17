@@ -18,8 +18,38 @@ from factor_engine.ast_nodes import (
     UnaryOpNode,
     VariableNode,
 )
+from factor_engine.dag import NodeResultStore, NodeResultStoreEntry
+from factor_engine.dag import DagNode, ExpressionDagBuilder
 from factor_engine.errors import ExecutionError
 from factor_engine.fourier import fourier_transform_frame
+from factor_engine.lifecycle import (
+    FirstWaveCandidateInput,
+    FrameProjectionMode,
+    FusionMode,
+    HelperFirstWaveCandidateInput,
+    HelperLifecycleMode,
+    HelperSecondWaveNestedCandidateInput,
+    LifecycleMode,
+    MaterializationThresholdMode,
+    NativeHeavyLifecycleInput,
+    OutputAttachMode,
+    PlannerCseMode,
+    classify_native_heavy_lifecycle,
+    collect_helper_drop_candidate_kind,
+    helper_lifecycle_effective,
+    is_first_wave_candidate,
+    is_helper_lifecycle_active,
+    is_lifecycle_active,
+    lifecycle_effective,
+    native_helper_usage_pattern,
+    normalize_frame_projection_mode,
+    normalize_fusion_mode,
+    normalize_helper_lifecycle_mode,
+    normalize_lifecycle_mode,
+    normalize_materialization_threshold_mode,
+    normalize_output_attach_mode,
+    normalize_planner_cse_mode,
+)
 from factor_engine.planner import (
     BatchExecutionPlan,
     BatchPlanningItem,
@@ -31,12 +61,17 @@ from factor_engine.planner import (
 )
 from factor_engine.profiling import (
     BatchDetail,
+    MemoryEvent,
+    NativeBufferDetail,
+    NodeExecutionDetail,
+    OutputDetail,
     PositionalPhaseDetail,
     StageLifecycleProfiler,
     current_rss_mb,
 )
 from factor_engine.native_positional import evaluate_native_positional_kernel
 from factor_engine.registry import get_function_spec
+from factor_engine.registry import canonical_function_name
 from factor_engine.stage_registry import StageRegistry
 from factor_engine.validator import ExecutionProfile, ValidationResult
 
@@ -62,13 +97,55 @@ class PreparedFrame:
             .drop(self.row_index_name)
         )
 
+    def restore_mapped_output_columns(
+        self,
+        output_expressions: list[tuple[str, pl.Expr]],
+    ) -> pl.DataFrame:
+        return (
+            self.sorted_df.select(
+                [
+                    self.row_index_name,
+                    *[expr.alias(output_name) for output_name, expr in output_expressions],
+                ]
+            )
+            .sort(self.row_index_name)
+            .drop(self.row_index_name)
+        )
+
+
+@dataclass
+class OutputRecord:
+    output_name: str
+    created_order_index: int
+    source_column_name: str | None
+    attached_order_index: int | None = None
+    last_required_order_index: int | None = None
+    frame_col_count_at_attach: int | None = None
+    rss_at_attach_mb: float | None = None
+    attached_to_working_frame: bool = False
+
+
+@dataclass
+class NativeBufferRecord:
+    buffer_id: str
+    related_output_name: str
+    created_order_index: int
+    bytes_estimate: int
+    alive_before_attach: bool
+    native_parallel_used: bool
+    parallel_worker_count: int
+    attached_order_index: int | None = None
+    released_order_index: int | None = None
+
 
 @dataclass
 class OrderedBatchRuntime:
     batch_id: str
     profiler: StageLifecycleProfiler | None
     registry: StageRegistry
-    lifecycle_enabled: bool
+    lifecycle_mode: LifecycleMode
+    helper_lifecycle_mode: HelperLifecycleMode
+    helper_lifecycle_workload: str
     expression_count: int
     rows: int
     groups: int
@@ -82,13 +159,319 @@ class OrderedBatchRuntime:
     restore_time_ms: float = 0.0
     append_time_ms: float = 0.0
     planned_stage_consumers: dict[tuple, int] | None = None
+    peak_output_col_count: int = 0
+    peak_stage_col_count: int = 0
+    native_output_buffer_peak_bytes_estimate: int = 0
+    parallel_enabled: bool = False
+    parallel_worker_count: int = 1
+    ast_node_count: int = 0
+    dag_node_count: int = 0
+    deduplicated_node_count: int = 0
+    shared_node_count: int = 0
+    materialized_node_count: int = 0
+    expensive_node_count: int = 0
+    result_store_peak_entry_count: int = 0
+    estimated_unshared_compute_calls: int = 0
+    compiled_output_heavy_occurrence_count: int = 0
+    compiled_fallback_eval_count: int = 0
+    node_store_compute_calls: int = 0
+    node_store_read_count: int = 0
+    reuse_consumer_count: int = 0
+    node_store_compute_time_ms: float = 0.0
+    compiled_output_eval_time_ms: float = 0.0
+    restore_assemble_time_ms: float = 0.0
+    restore_assemble_step: int = 0
+    append_step: int = 0
+    finalize_step: int = 0
+    batch_end_step: int = 0
+    lifecycle_candidate_count: int = 0
+    lifecycle_releasable_node_count: int = 0
+    lifecycle_peak_live_node_count: int = 0
+    lifecycle_peak_live_bytes_est: int = 0
+    avg_release_lag_steps: float = 0.0
+    max_release_lag_steps: int = 0
+    avg_structural_release_lag_steps: float = 0.0
+    max_structural_release_lag_steps: int = 0
+    avg_finalize_retention_lag_steps: float = 0.0
+    max_finalize_retention_lag_steps: int = 0
+    potential_live_bytes_step_savings: int = 0
+    l2_first_wave_candidate_count: int = 0
+    dropped_node_count: int = 0
+    drop_hit_count: int = 0
+    drop_miss_count: int = 0
+    peak_live_node_count_after_drop: int = 0
+    peak_live_bytes_est_before_drop: int = 0
+    peak_live_bytes_est_after_drop: int = 0
+    drop_delay_steps_avg: float = 0.0
+    drop_delay_steps_max: int = 0
+    lifecycle_effective: bool = False
+    multi_node_overlap_peak: int = 0
+    multi_node_peak_live_bytes_before: int = 0
+    multi_node_peak_live_bytes_after: int = 0
+    per_node_drop_order: tuple[str, ...] = ()
+    nested_drop_order_valid: bool = True
+    partial_reuse_safety_flag: bool = True
+    node_compute_count: int = 0
+    node_hit_count: int = 0
+    total_compute_calls: int = 0
+    total_store_hits: int = 0
+    shared_node_hit_rate: float = 0.0
+    compute_time_ms: float = 0.0
+    store_write_time_ms: float = 0.0
+    store_hit_time_ms: float = 0.0
+    native_heavy_node_count: int = 0
+    native_heavy_forbidden_count: int = 0
+    native_heavy_observable_only_count: int = 0
+    native_heavy_candidate_future_count: int = 0
+    native_compute_time_ms: float = 0.0
+    native_path_normalization_time_ms: float = 0.0
+    native_storage_residency_bytes: int = 0
+    native_node_store_read_count: int = 0
+    native_logical_consumer_count: int = 0
+    native_effective_use_count: int = 0
+    native_fallback_eval_count: int = 0
+    native_rewrite_applied_count: int = 0
+    native_helper_usage_patterns: tuple[str, ...] = ()
+    helper_column_count: int = 0
+    helper_releasable_count: int = 0
+    helper_blocked_count: int = 0
+    helper_peak_live_bytes: int = 0
+    helper_potential_savings: int = 0
+    helper_blocker_reasons: tuple[str, ...] = ()
+    helper_dropped_count: int = 0
+    helper_drop_miss_count: int = 0
+    helper_peak_live_bytes_before_drop: int = 0
+    helper_peak_live_bytes_after_drop: int = 0
+    helper_frame_width_before_drop: int = 0
+    helper_frame_width_after_drop: int = 0
+    helper_drop_delay_steps_avg: float = 0.0
+    helper_drop_delay_steps_max: int = 0
+    helper_lifecycle_effective: bool = False
+    nested_helper_dropped_count: int = 0
+    nested_helper_drop_missed_count: int = 0
+    nested_helper_peak_live_bytes_before_drop: int = 0
+    nested_helper_peak_live_bytes_after_drop: int = 0
+    nested_helper_frame_width_before_drop: int = 0
+    nested_helper_frame_width_after_drop: int = 0
+    nested_helper_lifecycle_effective: bool = False
+    recomputation_guardrail_candidate_count: int = 0
+    recomputation_guardrail_blocked_count: int = 0
+    recomputation_guardrail_allowed_count: int = 0
+    recomputation_expansion_estimate: int = 0
+    recomputation_expansion_actual_delta: int = 0
 
     def observe_frame(self, frame: pl.DataFrame) -> None:
         self.peak_frame_col_count = max(self.peak_frame_col_count, len(frame.columns))
+        frame_columns = set(frame.columns)
+        live_stage_columns = {
+            record.column_name
+            for record in self.registry.records.values()
+            if record.is_alive and record.column_name in frame_columns
+        }
+        live_output_columns = {
+            record.output_name
+            for record in getattr(self, "output_records", {}).values()
+            if record.attached_to_working_frame and record.output_name in frame_columns
+        }
+        self.peak_stage_col_count = max(self.peak_stage_col_count, len(live_stage_columns))
+        self.peak_output_col_count = max(self.peak_output_col_count, len(live_output_columns))
         rss = current_rss_mb()
         self.peak_rss_mb = max(self.peak_rss_mb, rss)
         if self.profiler is not None:
             self.profiler.peak_rss_mb = max(self.profiler.peak_rss_mb, rss)
+
+    def __post_init__(self) -> None:
+        self.output_records: dict[str, OutputRecord] = {}
+        self.native_buffer_records: dict[str, NativeBufferRecord] = {}
+        self._native_buffer_alive_bytes_estimate = 0
+
+    @property
+    def lifecycle_active(self) -> bool:
+        return is_lifecycle_active(self.lifecycle_mode)
+
+    def next_order_index(self) -> int:
+        return self.registry.next_order_index()
+
+    def _add_memory_event(
+        self,
+        *,
+        event_type: str,
+        order_index: int,
+        frame: pl.DataFrame,
+        output_name: str | None = None,
+        buffer_id: str | None = None,
+        related_output_name: str | None = None,
+        bytes_estimate: int | None = None,
+        native_parallel_used: bool | None = None,
+        parallel_worker_count: int | None = None,
+    ) -> None:
+        if self.profiler is None:
+            return
+        frame_columns = set(frame.columns)
+        stage_col_count = sum(
+            1
+            for record in self.registry.records.values()
+            if record.is_alive and record.column_name in frame_columns
+        )
+        output_col_count = sum(
+            1
+            for record in self.output_records.values()
+            if record.attached_to_working_frame and record.output_name in frame_columns
+        )
+        self.profiler.add_memory_event(
+            MemoryEvent(
+                event_type=event_type,
+                batch_id=self.batch_id,
+                order_index=order_index,
+                frame_col_count=len(frame.columns),
+                rss_mb=current_rss_mb(),
+                output_name=output_name,
+                buffer_id=buffer_id,
+                related_output_name=related_output_name,
+                bytes_estimate=bytes_estimate,
+                output_col_count=output_col_count,
+                stage_col_count=stage_col_count,
+                native_buffer_alive_bytes_estimate=self._native_buffer_alive_bytes_estimate,
+                native_parallel_used=native_parallel_used,
+                parallel_worker_count=parallel_worker_count,
+            )
+        )
+
+    def register_output_created(
+        self,
+        output_name: str,
+        *,
+        source_column_name: str | None,
+        frame: pl.DataFrame,
+    ) -> None:
+        if output_name in self.output_records:
+            return
+        order_index = self.next_order_index()
+        self.output_records[output_name] = OutputRecord(
+            output_name=output_name,
+            created_order_index=order_index,
+            source_column_name=source_column_name,
+        )
+        self._add_memory_event(
+            event_type="output_created",
+            order_index=order_index,
+            frame=frame,
+            output_name=output_name,
+        )
+
+    def mark_output_attached(
+        self,
+        output_name: str,
+        *,
+        frame: pl.DataFrame,
+        attached_to_working_frame: bool,
+    ) -> None:
+        record = self.output_records.get(output_name)
+        if record is None:
+            self.register_output_created(output_name, source_column_name=output_name, frame=frame)
+            record = self.output_records[output_name]
+        order_index = self.next_order_index()
+        record.attached_order_index = order_index
+        record.last_required_order_index = order_index
+        record.frame_col_count_at_attach = len(frame.columns)
+        record.rss_at_attach_mb = current_rss_mb()
+        record.attached_to_working_frame = attached_to_working_frame
+        self._add_memory_event(
+            event_type="output_attached",
+            order_index=order_index,
+            frame=frame,
+            output_name=output_name,
+        )
+
+    def mark_output_released(self, output_name: str, *, frame: pl.DataFrame) -> None:
+        record = self.output_records.get(output_name)
+        if record is None:
+            return
+        order_index = self.next_order_index()
+        record.attached_to_working_frame = False
+        self._add_memory_event(
+            event_type="output_released",
+            order_index=order_index,
+            frame=frame,
+            output_name=output_name,
+        )
+
+    def register_native_buffer_created(
+        self,
+        *,
+        related_output_name: str,
+        bytes_estimate: int,
+        frame: pl.DataFrame,
+        native_parallel_used: bool,
+        parallel_worker_count: int,
+    ) -> str:
+        order_index = self.next_order_index()
+        buffer_id = f"{self.batch_id}:native_buffer:{len(self.native_buffer_records) + 1}"
+        self.native_buffer_records[buffer_id] = NativeBufferRecord(
+            buffer_id=buffer_id,
+            related_output_name=related_output_name,
+            created_order_index=order_index,
+            bytes_estimate=bytes_estimate,
+            alive_before_attach=True,
+            native_parallel_used=native_parallel_used,
+            parallel_worker_count=parallel_worker_count,
+        )
+        self._native_buffer_alive_bytes_estimate += bytes_estimate
+        self.native_output_buffer_peak_bytes_estimate = max(
+            self.native_output_buffer_peak_bytes_estimate,
+            self._native_buffer_alive_bytes_estimate,
+        )
+        self.parallel_enabled = self.parallel_enabled or native_parallel_used
+        self.parallel_worker_count = max(self.parallel_worker_count, parallel_worker_count)
+        self._add_memory_event(
+            event_type="native_buffer_created",
+            order_index=order_index,
+            frame=frame,
+            buffer_id=buffer_id,
+            related_output_name=related_output_name,
+            bytes_estimate=bytes_estimate,
+            native_parallel_used=native_parallel_used,
+            parallel_worker_count=parallel_worker_count,
+        )
+        return buffer_id
+
+    def mark_native_buffer_attached(self, buffer_id: str, *, frame: pl.DataFrame) -> None:
+        record = self.native_buffer_records.get(buffer_id)
+        if record is None:
+            return
+        order_index = self.next_order_index()
+        record.attached_order_index = order_index
+        self._add_memory_event(
+            event_type="native_buffer_attached",
+            order_index=order_index,
+            frame=frame,
+            buffer_id=buffer_id,
+            related_output_name=record.related_output_name,
+            bytes_estimate=record.bytes_estimate,
+            native_parallel_used=record.native_parallel_used,
+            parallel_worker_count=record.parallel_worker_count,
+        )
+
+    def mark_native_buffer_released(self, buffer_id: str, *, frame: pl.DataFrame) -> None:
+        record = self.native_buffer_records.get(buffer_id)
+        if record is None or record.released_order_index is not None:
+            return
+        order_index = self.next_order_index()
+        record.released_order_index = order_index
+        self._native_buffer_alive_bytes_estimate = max(
+            0,
+            self._native_buffer_alive_bytes_estimate - record.bytes_estimate,
+        )
+        self._add_memory_event(
+            event_type="native_buffer_released",
+            order_index=order_index,
+            frame=frame,
+            buffer_id=buffer_id,
+            related_output_name=record.related_output_name,
+            bytes_estimate=record.bytes_estimate,
+            native_parallel_used=record.native_parallel_used,
+            parallel_worker_count=record.parallel_worker_count,
+        )
 
     def register_stage(
         self,
@@ -149,12 +532,18 @@ class OrderedBatchRuntime:
             frame,
             stage_cache=stage_cache,
             output_names=output_names,
-            enabled=self.lifecycle_enabled,
+            enabled=self.lifecycle_active,
         )
         self.observe_frame(swept)
         return swept
 
-    def finish(self, *, frame: pl.DataFrame, output_names: set[str]) -> None:
+    def finish(
+        self,
+        *,
+        frame: pl.DataFrame,
+        output_names: set[str],
+        output_source_columns: set[str] | None = None,
+    ) -> None:
         self.observe_frame(frame)
         if self.profiler is not None:
             for phase in self.profiler.positional_phases:
@@ -172,11 +561,76 @@ class OrderedBatchRuntime:
         positional = sum(1 for item in details if item.stage_kind.startswith("positional"))
         staged_prefix = sum(1 for item in details if item.stage_kind.startswith("staged"))
         planned_reusable = sum(1 for item in details if item.planned_consumer_count_total > 1)
+        retained_for_reuse = sum(1 for item in details if item.kept_alive_for_planned_reuse)
+        output_source_columns = output_source_columns or set()
+        retained_for_output = sum(
+            1
+            for item in details
+            if item.alive_at_batch_end and item.column_name in output_source_columns
+        )
         late_alive = sum(
             1
             for item in details
             if item.alive_at_batch_end and item.planned_consumer_count_total > 0
         )
+        alive_outputs = len(self.output_records)
+        batch_end_order_index = self.next_order_index()
+        for record in self.output_records.values():
+            if record.last_required_order_index is None:
+                record.last_required_order_index = batch_end_order_index
+            is_late_alive = (
+                record.attached_order_index is not None
+                and record.last_required_order_index is not None
+                and record.attached_order_index < record.last_required_order_index
+            )
+            self.profiler.add_output(
+                OutputDetail(
+                    output_name=record.output_name,
+                    batch_id=self.batch_id,
+                    created_order_index=record.created_order_index,
+                    attached_order_index=record.attached_order_index,
+                    last_required_order_index=record.last_required_order_index,
+                    alive_at_batch_end=True,
+                    is_late_alive_output=is_late_alive,
+                    frame_col_count_at_attach=record.frame_col_count_at_attach,
+                    rss_at_attach_mb=record.rss_at_attach_mb,
+                    source_column_name=record.source_column_name,
+                    attached_to_working_frame=record.attached_to_working_frame,
+                )
+            )
+        native_buffer_release_lag = 0
+        native_alive_before_attach = 0
+        native_alive_after_attach = 0
+        for record in self.native_buffer_records.values():
+            if record.alive_before_attach:
+                native_alive_before_attach += 1
+            release_lag = None
+            alive_after_attach = False
+            if record.attached_order_index is not None:
+                if record.released_order_index is None:
+                    alive_after_attach = True
+                else:
+                    release_lag = max(0, record.released_order_index - record.attached_order_index - 1)
+                    alive_after_attach = release_lag > 0
+                    native_buffer_release_lag = max(native_buffer_release_lag, release_lag)
+            if alive_after_attach:
+                native_alive_after_attach += 1
+            self.profiler.add_native_buffer(
+                NativeBufferDetail(
+                    buffer_id=record.buffer_id,
+                    batch_id=self.batch_id,
+                    related_output_name=record.related_output_name,
+                    created_order_index=record.created_order_index,
+                    attached_order_index=record.attached_order_index,
+                    released_order_index=record.released_order_index,
+                    bytes_estimate=record.bytes_estimate,
+                    alive_before_attach=record.alive_before_attach,
+                    alive_after_attach=alive_after_attach,
+                    release_lag_steps=release_lag,
+                    native_parallel_used=record.native_parallel_used,
+                    parallel_worker_count=record.parallel_worker_count,
+                )
+            )
         self.profiler.add_batch(
             BatchDetail(
                 batch_id=self.batch_id,
@@ -184,6 +638,8 @@ class OrderedBatchRuntime:
                 expression_count=self.expression_count,
                 rows=self.rows,
                 groups=self.groups,
+                lifecycle_mode=self.lifecycle_mode,
+                helper_lifecycle_mode=self.helper_lifecycle_mode,
                 batch_total_time_ms=(time.perf_counter() - self.batch_started_at) * 1000,
                 prepare_sort_time_ms=self.prepare_sort_time_ms,
                 stage_materialize_time_ms=self.stage_materialize_time_ms,
@@ -206,6 +662,143 @@ class OrderedBatchRuntime:
                 recomputed_stage_count=self.registry.recomputed_stage_count,
                 avoided_recomputation_count=self.registry.avoided_recomputation_count,
                 late_alive_stage_count=late_alive,
+                peak_output_col_count=self.peak_output_col_count,
+                peak_stage_col_count=self.peak_stage_col_count,
+                alive_output_at_batch_end_count=alive_outputs,
+                late_alive_output_count=sum(
+                    1
+                    for record in self.output_records.values()
+                    if record.attached_order_index is not None
+                    and record.last_required_order_index is not None
+                    and record.attached_order_index < record.last_required_order_index
+                ),
+                native_output_buffer_count=len(self.native_buffer_records),
+                native_output_buffer_peak_bytes_estimate=(
+                    self.native_output_buffer_peak_bytes_estimate
+                ),
+                native_buffer_alive_before_attach=native_alive_before_attach,
+                native_buffer_alive_after_attach=native_alive_after_attach,
+                native_buffer_release_lag=native_buffer_release_lag,
+                peak_native_buffer_bytes_estimate=self.native_output_buffer_peak_bytes_estimate,
+                retained_for_reuse_stage_count=retained_for_reuse,
+                retained_for_output_stage_count=retained_for_output,
+                parallel_enabled=self.parallel_enabled,
+                parallel_worker_count=self.parallel_worker_count,
+                parallel_buffer_peak_estimate=(
+                    self.native_output_buffer_peak_bytes_estimate
+                    if self.parallel_enabled
+                    else 0
+                ),
+                ast_node_count=self.ast_node_count,
+                dag_node_count=self.dag_node_count,
+                deduplicated_node_count=self.deduplicated_node_count,
+                shared_node_count=self.shared_node_count,
+                materialized_node_count=self.materialized_node_count,
+                expensive_node_count=self.expensive_node_count,
+                result_store_peak_entry_count=self.result_store_peak_entry_count,
+                finalize_time_ms=self.restore_assemble_time_ms + self.append_time_ms,
+                node_store_compute_calls=self.node_store_compute_calls,
+                estimated_unshared_compute_calls=self.estimated_unshared_compute_calls,
+                compiled_output_heavy_occurrence_count=(
+                    self.compiled_output_heavy_occurrence_count
+                ),
+                compiled_fallback_eval_count=self.compiled_fallback_eval_count,
+                node_store_read_count=self.node_store_read_count,
+                reuse_consumer_count=self.reuse_consumer_count,
+                node_store_compute_time_ms=self.node_store_compute_time_ms,
+                compiled_output_eval_time_ms=self.compiled_output_eval_time_ms,
+                restore_assemble_time_ms=self.restore_assemble_time_ms,
+                restore_assemble_step=self.restore_assemble_step,
+                append_step=self.append_step,
+                finalize_step=self.finalize_step,
+                batch_end_step=self.batch_end_step,
+                lifecycle_candidate_count=self.lifecycle_candidate_count,
+                lifecycle_releasable_node_count=self.lifecycle_releasable_node_count,
+                lifecycle_peak_live_node_count=self.lifecycle_peak_live_node_count,
+                lifecycle_peak_live_bytes_est=self.lifecycle_peak_live_bytes_est,
+                avg_release_lag_steps=self.avg_release_lag_steps,
+                max_release_lag_steps=self.max_release_lag_steps,
+                avg_structural_release_lag_steps=self.avg_structural_release_lag_steps,
+                max_structural_release_lag_steps=self.max_structural_release_lag_steps,
+                avg_finalize_retention_lag_steps=self.avg_finalize_retention_lag_steps,
+                max_finalize_retention_lag_steps=self.max_finalize_retention_lag_steps,
+                potential_live_bytes_step_savings=self.potential_live_bytes_step_savings,
+                l2_first_wave_candidate_count=self.l2_first_wave_candidate_count,
+                dropped_node_count=self.dropped_node_count,
+                drop_hit_count=self.drop_hit_count,
+                drop_miss_count=self.drop_miss_count,
+                peak_live_node_count_after_drop=self.peak_live_node_count_after_drop,
+                peak_live_bytes_est_before_drop=self.peak_live_bytes_est_before_drop,
+                peak_live_bytes_est_after_drop=self.peak_live_bytes_est_after_drop,
+                drop_delay_steps_avg=self.drop_delay_steps_avg,
+                drop_delay_steps_max=self.drop_delay_steps_max,
+                lifecycle_effective=self.lifecycle_effective,
+                multi_node_overlap_peak=self.multi_node_overlap_peak,
+                multi_node_peak_live_bytes_before=self.multi_node_peak_live_bytes_before,
+                multi_node_peak_live_bytes_after=self.multi_node_peak_live_bytes_after,
+                per_node_drop_order=self.per_node_drop_order,
+                nested_drop_order_valid=self.nested_drop_order_valid,
+                partial_reuse_safety_flag=self.partial_reuse_safety_flag,
+                node_compute_count=self.node_compute_count,
+                node_hit_count=self.node_hit_count,
+                total_compute_calls=self.total_compute_calls,
+                total_store_hits=self.total_store_hits,
+                shared_node_hit_rate=self.shared_node_hit_rate,
+                compute_time_ms=self.compute_time_ms,
+                store_write_time_ms=self.store_write_time_ms,
+                store_hit_time_ms=self.store_hit_time_ms,
+                native_heavy_node_count=self.native_heavy_node_count,
+                native_heavy_forbidden_count=self.native_heavy_forbidden_count,
+                native_heavy_observable_only_count=self.native_heavy_observable_only_count,
+                native_heavy_candidate_future_count=self.native_heavy_candidate_future_count,
+                native_compute_time_ms=self.native_compute_time_ms,
+                native_path_normalization_time_ms=self.native_path_normalization_time_ms,
+                native_storage_residency_bytes=self.native_storage_residency_bytes,
+                native_node_store_read_count=self.native_node_store_read_count,
+                native_logical_consumer_count=self.native_logical_consumer_count,
+                native_effective_use_count=self.native_effective_use_count,
+                native_fallback_eval_count=self.native_fallback_eval_count,
+                native_rewrite_applied_count=self.native_rewrite_applied_count,
+                native_helper_usage_patterns=self.native_helper_usage_patterns,
+                helper_column_count=self.helper_column_count,
+                helper_releasable_count=self.helper_releasable_count,
+                helper_blocked_count=self.helper_blocked_count,
+                helper_peak_live_bytes=self.helper_peak_live_bytes,
+                helper_potential_savings=self.helper_potential_savings,
+                helper_blocker_reasons=self.helper_blocker_reasons,
+                helper_dropped_count=self.helper_dropped_count,
+                helper_drop_miss_count=self.helper_drop_miss_count,
+                helper_peak_live_bytes_before_drop=self.helper_peak_live_bytes_before_drop,
+                helper_peak_live_bytes_after_drop=self.helper_peak_live_bytes_after_drop,
+                helper_frame_width_before_drop=self.helper_frame_width_before_drop,
+                helper_frame_width_after_drop=self.helper_frame_width_after_drop,
+                helper_drop_delay_steps_avg=self.helper_drop_delay_steps_avg,
+                helper_drop_delay_steps_max=self.helper_drop_delay_steps_max,
+                helper_lifecycle_effective=self.helper_lifecycle_effective,
+                nested_helper_dropped_count=self.nested_helper_dropped_count,
+                nested_helper_drop_missed_count=self.nested_helper_drop_missed_count,
+                nested_helper_peak_live_bytes_before_drop=(
+                    self.nested_helper_peak_live_bytes_before_drop
+                ),
+                nested_helper_peak_live_bytes_after_drop=(
+                    self.nested_helper_peak_live_bytes_after_drop
+                ),
+                nested_helper_frame_width_before_drop=self.nested_helper_frame_width_before_drop,
+                nested_helper_frame_width_after_drop=self.nested_helper_frame_width_after_drop,
+                nested_helper_lifecycle_effective=self.nested_helper_lifecycle_effective,
+                recomputation_guardrail_candidate_count=(
+                    self.recomputation_guardrail_candidate_count
+                ),
+                recomputation_guardrail_blocked_count=(
+                    self.recomputation_guardrail_blocked_count
+                ),
+                recomputation_guardrail_allowed_count=(
+                    self.recomputation_guardrail_allowed_count
+                ),
+                recomputation_expansion_estimate=self.recomputation_expansion_estimate,
+                recomputation_expansion_actual_delta=(
+                    self.recomputation_expansion_actual_delta
+                ),
             )
         )
 
@@ -218,12 +811,47 @@ class Executor:
         code_col: str = "code",
         profile_recorder: StageLifecycleProfiler | None = None,
         lifecycle_enabled: bool = False,
+        lifecycle_mode: str | None = None,
+        helper_lifecycle_mode: str | None = None,
+        output_attach_mode: str | None = None,
+        frame_projection_mode: str | None = None,
+        materialization_threshold_mode: str | None = None,
+        recomputation_guardrail_max_expansion: int = 0,
+        planner_cse_mode: str | None = None,
+        fusion_mode: str | None = None,
+        dag_cse_enabled: bool = True,
     ):
         self.df = df
         self.time_col = time_col
         self.code_col = code_col
         self.profile_recorder = profile_recorder
-        self.lifecycle_enabled = lifecycle_enabled
+        self.lifecycle_mode = normalize_lifecycle_mode(
+            lifecycle=lifecycle_enabled,
+            lifecycle_mode=lifecycle_mode,
+        )
+        self.helper_lifecycle_mode = normalize_helper_lifecycle_mode(
+            helper_lifecycle_mode=helper_lifecycle_mode,
+        )
+        self.output_attach_mode: OutputAttachMode = normalize_output_attach_mode(
+            output_attach_mode=output_attach_mode,
+        )
+        self.frame_projection_mode: FrameProjectionMode = normalize_frame_projection_mode(
+            frame_projection_mode=frame_projection_mode,
+        )
+        self.materialization_threshold_mode: MaterializationThresholdMode = (
+            normalize_materialization_threshold_mode(
+                materialization_threshold_mode=materialization_threshold_mode,
+            )
+        )
+        self.recomputation_guardrail_max_expansion = recomputation_guardrail_max_expansion
+        self.planner_cse_mode: PlannerCseMode = normalize_planner_cse_mode(
+            planner_cse_mode=planner_cse_mode,
+        )
+        self.fusion_mode: FusionMode = normalize_fusion_mode(
+            fusion_mode=fusion_mode,
+        )
+        self.helper_lifecycle_workload = self._infer_helper_lifecycle_workload()
+        self.dag_cse_enabled = dag_cse_enabled
         self._prepared_frame: PreparedFrame | None = None
         self._planner = ExecutionPlanner(time_col=self.time_col, code_col=self.code_col)
         self._segment_id_name = self._temporary_helper_name("__segment_id")
@@ -235,6 +863,15 @@ class Executor:
             "__code_len",
             reserved={self._segment_id_name, self._code_pos_name},
         )
+
+    def _infer_helper_lifecycle_workload(self) -> str:
+        if self.profile_recorder is None:
+            return ""
+        benchmark_name = self.profile_recorder.benchmark_name
+        for workload in ("multi_shared_nodes", "partial_reuse", "repeated_heavy"):
+            if workload in benchmark_name:
+                return workload
+        return ""
 
     def _temporary_helper_name(
         self,
@@ -304,7 +941,7 @@ class Executor:
         items: list[tuple[str, Expr, ValidationResult, ExecutionPlan | None]],
     ) -> pl.DataFrame:
         compiled_no_time_items: list[tuple[str, ValidationResult, pl.Expr]] = []
-        compiled_time_items: list[tuple[str, ValidationResult, pl.Expr]] = []
+        compiled_time_items: list[tuple[str, Expr, ValidationResult, pl.Expr]] = []
         planning_items: list[BatchPlanningItem] = []
 
         for output_name, expr, validation, plan in items:
@@ -318,12 +955,16 @@ class Executor:
                 )
             )
             if item_plan.route == "compiled":
-                target_bucket = (
-                    compiled_time_items if validation.profile.needs_time_order else compiled_no_time_items
-                )
-                target_bucket.append((output_name, validation, self.compile(expr)))
+                if validation.profile.needs_time_order:
+                    compiled_time_items.append((output_name, expr, validation, self.compile(expr)))
+                else:
+                    compiled_no_time_items.append((output_name, validation, self.compile(expr)))
 
-        deferred_planning_items = [item for item in planning_items if item.plan.route != "compiled"]
+        deferred_planning_items = [
+            item
+            for item in planning_items
+            if item.plan.route != "compiled" or item.validation.profile.needs_time_order
+        ]
         batch_plan = self._planner.build_batch_plan(deferred_planning_items)
         result_df = self.df
         if compiled_no_time_items:
@@ -332,7 +973,8 @@ class Executor:
                 time_col=self.time_col,
                 code_col=self.code_col,
                 profile_recorder=self.profile_recorder,
-                lifecycle_enabled=self.lifecycle_enabled,
+                lifecycle_mode=self.lifecycle_mode,
+                dag_cse_enabled=self.dag_cse_enabled,
             ).evaluate_many_compiled(compiled_no_time_items)
 
         if (
@@ -347,7 +989,8 @@ class Executor:
                 time_col=self.time_col,
                 code_col=self.code_col,
                 profile_recorder=self.profile_recorder,
-                lifecycle_enabled=self.lifecycle_enabled,
+                lifecycle_mode=self.lifecycle_mode,
+                dag_cse_enabled=self.dag_cse_enabled,
             ).evaluate_many_planned(
                 batch_plan,
                 compiled_time_items=compiled_time_items,
@@ -361,7 +1004,7 @@ class Executor:
         self,
         batch_plan: BatchExecutionPlan,
         *,
-        compiled_time_items: list[tuple[str, ValidationResult, pl.Expr]] | None = None,
+        compiled_time_items: list[tuple[str, Expr, ValidationResult, pl.Expr]] | None = None,
     ) -> pl.DataFrame:
         result_df = self.df
         ordered_compiled_items = compiled_time_items or []
@@ -372,7 +1015,9 @@ class Executor:
                 time_col=self.time_col,
                 code_col=self.code_col,
                 profile_recorder=self.profile_recorder,
-                lifecycle_enabled=self.lifecycle_enabled,
+                lifecycle_mode=self.lifecycle_mode,
+                helper_lifecycle_mode=self.helper_lifecycle_mode,
+                dag_cse_enabled=self.dag_cse_enabled,
             )._evaluate_many_segmented_columns(
                 [
                     (item.output_name, item.expr, item.validation)
@@ -391,7 +1036,9 @@ class Executor:
                 time_col=self.time_col,
                 code_col=self.code_col,
                 profile_recorder=self.profile_recorder,
-                lifecycle_enabled=self.lifecycle_enabled,
+                lifecycle_mode=self.lifecycle_mode,
+                helper_lifecycle_mode=self.helper_lifecycle_mode,
+                dag_cse_enabled=self.dag_cse_enabled,
             )._evaluate_many_ordered_batch_plan(
                 batch_plan,
                 compiled_time_items=ordered_compiled_items,
@@ -411,7 +1058,7 @@ class Executor:
         appended_columns.extend(
             [
                 output_name
-                for output_name, _validation, _compiled in ordered_compiled_items
+                for output_name, _expr, _validation, _compiled in ordered_compiled_items
                 if output_name not in original_columns and output_name not in appended_columns
             ]
         )
@@ -739,11 +1386,1382 @@ class Executor:
 
         return None
 
+    def _dag_identity_for_expr(self, expr: Expr) -> tuple:
+        dag = ExpressionDagBuilder(time_col=self.time_col, code_col=self.code_col).build(
+            [("__value__", expr)],
+            materialization_threshold_mode=self.materialization_threshold_mode,
+            recomputation_guardrail_max_expansion=(
+                self.recomputation_guardrail_max_expansion
+            ),
+            planner_cse_mode=self.planner_cse_mode,
+            fusion_mode=self.fusion_mode,
+        )
+        nodes_by_id = dag.node_by_id()
+        return nodes_by_id[dag.output_node_ids[0]].identity
+
+    def _rewrite_expr_with_materialized_nodes(
+        self,
+        expr: Expr,
+        *,
+        materialized_column_by_identity: dict[tuple, str],
+        dag_nodes_by_identity: dict[tuple, DagNode],
+        skip_identity: tuple | None = None,
+    ) -> tuple[Expr, dict[str, int]]:
+        identity = self._dag_identity_for_expr(expr)
+        if identity != skip_identity and identity in materialized_column_by_identity:
+            node = dag_nodes_by_identity[identity]
+            return VariableNode(materialized_column_by_identity[identity]), {node.node_id: 1}
+
+        if isinstance(expr, (NumberNode, BooleanNode, VariableNode)):
+            return expr, {}
+
+        if isinstance(expr, ListNode):
+            items: list[Expr] = []
+            hits: dict[str, int] = {}
+            for item in expr.items:
+                rewritten, child_hits = self._rewrite_expr_with_materialized_nodes(
+                    item,
+                    materialized_column_by_identity=materialized_column_by_identity,
+                    dag_nodes_by_identity=dag_nodes_by_identity,
+                    skip_identity=skip_identity,
+                )
+                items.append(rewritten)
+                self._merge_node_hit_counts(hits, child_hits)
+            return ListNode(items), hits
+
+        if isinstance(expr, UnaryOpNode):
+            operand, hits = self._rewrite_expr_with_materialized_nodes(
+                expr.operand,
+                materialized_column_by_identity=materialized_column_by_identity,
+                dag_nodes_by_identity=dag_nodes_by_identity,
+                skip_identity=skip_identity,
+            )
+            return UnaryOpNode(expr.operator, operand), hits
+
+        if isinstance(expr, BinaryOpNode):
+            left, hits = self._rewrite_expr_with_materialized_nodes(
+                expr.left,
+                materialized_column_by_identity=materialized_column_by_identity,
+                dag_nodes_by_identity=dag_nodes_by_identity,
+                skip_identity=skip_identity,
+            )
+            right, right_hits = self._rewrite_expr_with_materialized_nodes(
+                expr.right,
+                materialized_column_by_identity=materialized_column_by_identity,
+                dag_nodes_by_identity=dag_nodes_by_identity,
+                skip_identity=skip_identity,
+            )
+            self._merge_node_hit_counts(hits, right_hits)
+            return BinaryOpNode(left, expr.operator, right), hits
+
+        if isinstance(expr, CallNode):
+            args: list[Expr] = []
+            hits: dict[str, int] = {}
+            for arg in expr.args:
+                rewritten, child_hits = self._rewrite_expr_with_materialized_nodes(
+                    arg,
+                    materialized_column_by_identity=materialized_column_by_identity,
+                    dag_nodes_by_identity=dag_nodes_by_identity,
+                    skip_identity=skip_identity,
+                )
+                args.append(rewritten)
+                self._merge_node_hit_counts(hits, child_hits)
+            kwargs: dict[str, Expr] = {}
+            for key, value in expr.kwargs.items():
+                rewritten, child_hits = self._rewrite_expr_with_materialized_nodes(
+                    value,
+                    materialized_column_by_identity=materialized_column_by_identity,
+                    dag_nodes_by_identity=dag_nodes_by_identity,
+                    skip_identity=skip_identity,
+                )
+                kwargs[key] = rewritten
+                self._merge_node_hit_counts(hits, child_hits)
+            return CallNode(expr.name, args, kwargs), hits
+
+        raise ExecutionError(f"Unsupported AST node for DAG rewrite: {type(expr).__name__}")
+
+    @staticmethod
+    def _merge_node_hit_counts(target: dict[str, int], source: dict[str, int]) -> None:
+        for node_id, count in source.items():
+            target[node_id] = target.get(node_id, 0) + count
+
+    def _count_materializable_node_occurrences(
+        self,
+        expr: Expr,
+        *,
+        dag_nodes_by_identity: dict[tuple, DagNode],
+        node_lifecycle_class: str | None = None,
+    ) -> int:
+        identity = self._dag_identity_for_expr(expr)
+        node = dag_nodes_by_identity.get(identity)
+        if node is not None and node.materialize:
+            if node_lifecycle_class is None:
+                return 1
+            return 1 if self._node_lifecycle_class(node.identity) == node_lifecycle_class else 0
+
+        if isinstance(expr, (NumberNode, BooleanNode, VariableNode)):
+            return 0
+
+        if isinstance(expr, ListNode):
+            return sum(
+                self._count_materializable_node_occurrences(
+                    item,
+                    dag_nodes_by_identity=dag_nodes_by_identity,
+                    node_lifecycle_class=node_lifecycle_class,
+                )
+                for item in expr.items
+            )
+
+        if isinstance(expr, UnaryOpNode):
+            return self._count_materializable_node_occurrences(
+                expr.operand,
+                dag_nodes_by_identity=dag_nodes_by_identity,
+                node_lifecycle_class=node_lifecycle_class,
+            )
+
+        if isinstance(expr, BinaryOpNode):
+            return (
+                self._count_materializable_node_occurrences(
+                    expr.left,
+                    dag_nodes_by_identity=dag_nodes_by_identity,
+                    node_lifecycle_class=node_lifecycle_class,
+                )
+                + self._count_materializable_node_occurrences(
+                    expr.right,
+                    dag_nodes_by_identity=dag_nodes_by_identity,
+                    node_lifecycle_class=node_lifecycle_class,
+                )
+            )
+
+        if isinstance(expr, CallNode):
+            return sum(
+                self._count_materializable_node_occurrences(
+                    arg,
+                    dag_nodes_by_identity=dag_nodes_by_identity,
+                    node_lifecycle_class=node_lifecycle_class,
+                )
+                for arg in expr.args
+            ) + sum(
+                self._count_materializable_node_occurrences(
+                    value,
+                    dag_nodes_by_identity=dag_nodes_by_identity,
+                    node_lifecycle_class=node_lifecycle_class,
+                )
+                for value in expr.kwargs.values()
+            )
+
+        raise ExecutionError(f"Unsupported AST node for DAG occurrence count: {type(expr).__name__}")
+
+    def _materialize_shared_dag_nodes_on_sorted_df(
+        self,
+        sorted_df: pl.DataFrame,
+        *,
+        dag_nodes: Sequence[DagNode],
+        reserved_names: set[str],
+        stage_cache: dict[tuple, str],
+        result_store: NodeResultStore,
+        materialized_column_by_identity: dict[tuple, str],
+        dag_nodes_by_identity: dict[tuple, DagNode],
+        lifecycle_plans_by_node_id: dict[str, object],
+        runtime: OrderedBatchRuntime | None,
+    ) -> tuple[pl.DataFrame, dict[tuple, str]]:
+        for node in dag_nodes:
+            if not node.materialize or node.identity in materialized_column_by_identity:
+                continue
+            lifecycle_plan = lifecycle_plans_by_node_id.get(node.node_id)
+            producer_step = (
+                getattr(lifecycle_plan, "producer_step", None)
+                if lifecycle_plan is not None
+                else None
+            )
+
+            rewritten_expr, child_hits = self._rewrite_expr_with_materialized_nodes(
+                node.expr,
+                materialized_column_by_identity=materialized_column_by_identity,
+                dag_nodes_by_identity=dag_nodes_by_identity,
+                skip_identity=node.identity,
+            )
+            for node_id, count in child_hits.items():
+                result_store.record_reads(
+                    node_id,
+                    read_count=count,
+                    consumer_count=1,
+                    read_step=producer_step,
+                )
+                result_store.record_planned_consumption(
+                    node_id,
+                    step=producer_step,
+                    multiplicity=count,
+                    active_drop_enabled=is_lifecycle_active(self.lifecycle_mode),
+                )
+
+            stage_name = self._temporary_helper_name("__dag_node", reserved=reserved_names)
+            compute_started_at = time.perf_counter()
+            sorted_df = sorted_df.with_columns(self._compile_expr(rewritten_expr).alias(stage_name))
+            compute_time_ms = (time.perf_counter() - compute_started_at) * 1000
+            bytes_estimate = 0
+            try:
+                bytes_estimate = int(sorted_df.get_column(stage_name).estimated_size())
+            except Exception:
+                bytes_estimate = 0
+            store_started_at = time.perf_counter()
+            reserved_names.add(stage_name)
+            materialized_column_by_identity[node.identity] = stage_name
+            stage_cache[("dag_node", node.node_id)] = stage_name
+            result_store.put_materialized(
+                NodeResultStoreEntry(
+                    node_id=node.node_id,
+                    identity=node.identity,
+                    materialization_kind=node.materialization_kind,
+                    materialization_reason=node.materialization_reason,
+                    materialization_eligibility=node.materialization_eligibility,
+                    column_name=stage_name,
+                ),
+                compute_time_ms=compute_time_ms,
+                store_write_time_ms=(time.perf_counter() - store_started_at) * 1000,
+                materialized_at_step=(
+                    getattr(lifecycle_plan, "producer_step", None)
+                    if lifecycle_plan is not None
+                    else None
+                ),
+                theoretical_release_step=(
+                    getattr(lifecycle_plan, "last_use_step", None)
+                    if lifecycle_plan is not None
+                    else None
+                ),
+                bytes_estimate=bytes_estimate,
+                ref_count_initial=(
+                    getattr(lifecycle_plan, "ref_count_initial", 0)
+                    if lifecycle_plan is not None
+                    else 0
+                ),
+                active_drop_eligible=(
+                    is_lifecycle_active(self.lifecycle_mode)
+                    and self.dag_cse_enabled
+                    and is_first_wave_candidate(
+                        FirstWaveCandidateInput(
+                            materialization_eligibility=node.materialization_eligibility,
+                            drop_candidate=(
+                                getattr(lifecycle_plan, "drop_candidate", False)
+                                if lifecycle_plan is not None
+                                else False
+                            ),
+                            drop_blocker_reason=(
+                                getattr(lifecycle_plan, "drop_blocker_reason", "")
+                                if lifecycle_plan is not None
+                                else "missing_lifecycle_plan"
+                            ),
+                            structural_release_lag_steps=(
+                                getattr(lifecycle_plan, "structural_release_lag_steps", 0)
+                                if lifecycle_plan is not None
+                                else 0
+                            ),
+                            node_lifecycle_class=self._node_lifecycle_class(node.identity),
+                            bytes_estimate=bytes_estimate,
+                        )
+                    )
+                ),
+            )
+            if runtime is not None:
+                runtime.register_stage(
+                    expr_key=("dag_node", node.node_id),
+                    column_name=stage_name,
+                    stage_kind="dag_shared_intermediate",
+                    producer_route="dag_cse",
+                    frame=sorted_df,
+                    cache_key=("dag_node", node.node_id),
+                )
+
+        return sorted_df, stage_cache
+
+    def _materialized_helper_has_nested_dependency(
+        self,
+        *,
+        result_store: NodeResultStore,
+        lifecycle_plans_by_node_id: dict[str, object],
+    ) -> bool:
+        materialized_node_ids = {
+            stats.node_id
+            for stats in result_store.stats.values()
+            if stats.compute_count > 0
+            and stats.helper_column_name is not None
+            and stats.materialization_kind == "shared_intermediate"
+        }
+        return any(
+            getattr(plan, "parent_node_id", None) in materialized_node_ids
+            for node_id, plan in lifecycle_plans_by_node_id.items()
+            if node_id in materialized_node_ids
+        )
+
+    @staticmethod
+    def _append_helper_trace_event(stats, event: str) -> None:
+        if event in stats.nested_helper_trace_events:
+            return
+        stats.nested_helper_trace_events = (*stats.nested_helper_trace_events, event)
+
+    def _prepare_helper_lifecycle_metadata(
+        self,
+        *,
+        result_store: NodeResultStore,
+        runtime: OrderedBatchRuntime,
+        lifecycle_plans_by_node_id: dict[str, object],
+        restore_assemble_step: int,
+        finalize_step: int,
+        batch_end_step: int,
+        output_source_columns: set[str],
+    ) -> None:
+        nested_dependency_present = self._materialized_helper_has_nested_dependency(
+            result_store=result_store,
+            lifecycle_plans_by_node_id=lifecycle_plans_by_node_id,
+        )
+        parent_helper_by_node_id: dict[str, str] = {}
+        child_helpers_by_node_id: dict[str, list[str]] = {}
+        helper_stats_by_column: dict[str, object] = {}
+        for stats in result_store.stats.values():
+            if stats.compute_count <= 0 or stats.helper_column_name is None:
+                continue
+            helper_stats_by_column[stats.helper_column_name] = stats
+            lifecycle_plan = lifecycle_plans_by_node_id.get(stats.node_id)
+            parent_node_id = (
+                getattr(lifecycle_plan, "parent_node_id", None)
+                if lifecycle_plan is not None
+                else None
+            )
+            if parent_node_id is not None:
+                parent_stats = result_store.stats.get(parent_node_id)
+                if parent_stats is not None and parent_stats.helper_column_name is not None:
+                    parent_helper_by_node_id[stats.node_id] = parent_stats.helper_column_name
+                    child_helpers_by_node_id.setdefault(parent_node_id, []).append(
+                        stats.helper_column_name
+                    )
+        for stats in result_store.stats.values():
+            entry = result_store.get(stats.node_id)
+            if stats.compute_count <= 0 or stats.helper_column_name is None:
+                continue
+            lifecycle_plan = lifecycle_plans_by_node_id.get(stats.node_id)
+            helper_last_use_step = max(
+                [
+                    value
+                    for value in (
+                        stats.theoretical_release_step,
+                        stats.last_read_step,
+                        finalize_step if stats.helper_column_name in output_source_columns else None,
+                    )
+                    if value is not None
+                ],
+                default=stats.helper_column_created_step or 0,
+            )
+            helper_blocker_reason = ""
+            if stats.helper_column_name in output_source_columns:
+                helper_blocker_reason = "final_output_dependency"
+            elif entry is not None and entry.materialization_kind != "shared_intermediate":
+                helper_blocker_reason = (
+                    "final_output_dependency"
+                    if entry.materialization_kind == "final"
+                    else "execution_order_uncertain"
+                )
+            helper_lag = max(0, batch_end_step - helper_last_use_step)
+            stats.helper_last_use_step = helper_last_use_step
+            stats.helper_logical_last_use_step = (
+                stats.last_read_step
+                if stats.last_read_step is not None
+                else stats.theoretical_release_step
+            )
+            stats.helper_structural_dependency_end_step = max(
+                [
+                    value
+                    for value in (
+                        stats.helper_logical_last_use_step,
+                        stats.theoretical_release_step,
+                        (
+                            getattr(
+                                lifecycle_plans_by_node_id.get(
+                                    getattr(lifecycle_plan, "parent_node_id", None)
+                                ),
+                                "last_use_step",
+                                None,
+                            )
+                            if lifecycle_plan is not None
+                            else None
+                        ),
+                    )
+                    if value is not None
+                ],
+                default=helper_last_use_step,
+            )
+            stats.helper_logical_death_step = helper_last_use_step
+            stats.helper_drop_safe_step = restore_assemble_step
+            stats.helper_depth = (
+                getattr(lifecycle_plan, "node_depth", 0)
+                if lifecycle_plan is not None
+                else 0
+            )
+            stats.parent_helper_column_name = parent_helper_by_node_id.get(stats.node_id)
+            stats.child_helper_columns = tuple(
+                sorted(child_helpers_by_node_id.get(stats.node_id, ()))
+            )
+            helper_lag = max(0, batch_end_step - stats.helper_structural_dependency_end_step)
+            stats.helper_structural_lag_steps = helper_lag
+            stats.helper_potential_bytes_step_savings = stats.helper_bytes_estimate * helper_lag
+            stats.helper_drop_blocker_reason = helper_blocker_reason
+            if helper_blocker_reason:
+                stats.helper_lifecycle_state = (
+                    "structurally_required"
+                    if helper_blocker_reason
+                    in {"final_output_dependency", "late_select_dependency"}
+                    else "drop_blocked"
+                )
+            elif helper_lag > 0:
+                stats.helper_lifecycle_state = "logically_dead"
+            else:
+                stats.helper_lifecycle_state = "active"
+            first_wave_candidate = HelperFirstWaveCandidateInput(
+                helper_lifecycle_state=stats.helper_lifecycle_state,
+                helper_drop_blocker_reason=stats.helper_drop_blocker_reason,
+                helper_structural_lag_steps=stats.helper_structural_lag_steps,
+                helper_bytes_estimate=stats.helper_bytes_estimate,
+                materialization_kind=stats.materialization_kind,
+                materialization_eligibility=stats.materialization_eligibility,
+                node_lifecycle_class=self._node_lifecycle_class(stats.identity),
+                workload_name=runtime.helper_lifecycle_workload,
+                nested_dependency_present=nested_dependency_present,
+            )
+            second_wave_candidate = HelperSecondWaveNestedCandidateInput(
+                helper_lifecycle_state=stats.helper_lifecycle_state,
+                helper_drop_blocker_reason=stats.helper_drop_blocker_reason,
+                helper_structural_lag_steps=stats.helper_structural_lag_steps,
+                helper_bytes_estimate=stats.helper_bytes_estimate,
+                materialization_kind=stats.materialization_kind,
+                materialization_eligibility=stats.materialization_eligibility,
+                node_lifecycle_class=self._node_lifecycle_class(stats.identity),
+                parent_helper_column_name=stats.parent_helper_column_name,
+                child_helper_columns=stats.child_helper_columns,
+                parent_child_count=(
+                    len(
+                        child_helpers_by_node_id.get(
+                            getattr(lifecycle_plan, "parent_node_id", None),
+                            (),
+                        )
+                    )
+                    if lifecycle_plan is not None
+                    and getattr(lifecycle_plan, "parent_node_id", None) is not None
+                    else 0
+                ),
+                materialized_helper_count=len(helper_stats_by_column),
+                nested_output_pinned=any(
+                    helper_name in output_source_columns
+                    or (
+                        helper_stats_by_column[helper_name].materialization_kind
+                        != "shared_intermediate"
+                    )
+                    for helper_name in (
+                        *(stats.child_helper_columns),
+                        *(
+                            (stats.parent_helper_column_name,)
+                            if stats.parent_helper_column_name is not None
+                            else ()
+                        ),
+                    )
+                    if helper_name in helper_stats_by_column
+                ),
+                helper_structural_dependency_end_step=(
+                    stats.helper_structural_dependency_end_step
+                ),
+                helper_drop_safe_step=stats.helper_drop_safe_step,
+                node_store_read_count=stats.node_store_read_count,
+                reuse_consumer_count=stats.reuse_consumer_count,
+            )
+            is_candidate, candidate_kind, miss_reason = collect_helper_drop_candidate_kind(
+                mode=runtime.helper_lifecycle_mode,
+                first_wave_candidate=first_wave_candidate,
+                second_wave_candidate=second_wave_candidate,
+            )
+            stats.helper_drop_candidate = is_candidate
+            stats.helper_drop_candidate_kind = candidate_kind
+            stats.nested_helper_candidate = candidate_kind == "second_wave_nested"
+            stats.nested_helper_miss_reason = "" if is_candidate else miss_reason
+            if candidate_kind == "second_wave_nested":
+                self._append_helper_trace_event(stats, "nested_helper_candidate")
+            elif runtime.helper_lifecycle_mode == "second_wave_nested":
+                self._append_helper_trace_event(stats, "nested_helper_drop_missed")
+
+    def _revalidate_helper_drop(
+        self,
+        *,
+        stats,
+        frame: pl.DataFrame,
+        output_source_columns: set[str],
+    ) -> tuple[bool, str]:
+        column_name = stats.helper_column_name
+        if stats.helper_dropped_at_step is not None:
+            return False, "already_dropped"
+        if column_name is None or column_name not in frame.columns:
+            return False, "not_in_frame"
+        if column_name in output_source_columns:
+            return False, "output_pinned"
+        if stats.helper_drop_blocker_reason:
+            return False, stats.helper_drop_blocker_reason
+        if not stats.helper_drop_candidate:
+            return False, stats.nested_helper_miss_reason or "unsupported_shape"
+        if stats.helper_drop_safe_step is None:
+            return False, "safe_step_mismatch"
+        return True, ""
+
+    def _drop_first_wave_helper_columns(
+        self,
+        *,
+        frame: pl.DataFrame,
+        result_store: NodeResultStore,
+        runtime: OrderedBatchRuntime,
+        stage_cache: dict[tuple, str],
+        output_source_columns: set[str],
+    ) -> pl.DataFrame:
+        helper_stats = [
+            stats
+            for stats in result_store.stats.values()
+            if stats.compute_count > 0 and stats.helper_column_name is not None
+        ]
+        runtime.helper_peak_live_bytes_before_drop = sum(
+            stats.helper_bytes_estimate for stats in helper_stats
+        )
+        runtime.helper_peak_live_bytes_after_drop = runtime.helper_peak_live_bytes_before_drop
+        runtime.helper_frame_width_before_drop = len(frame.columns)
+        runtime.helper_frame_width_after_drop = len(frame.columns)
+        nested_helper_stats = [
+            stats
+            for stats in helper_stats
+            if stats.parent_helper_column_name is not None
+            or stats.child_helper_columns
+            or stats.nested_helper_candidate
+            or stats.nested_helper_miss_reason
+        ]
+        runtime.nested_helper_peak_live_bytes_before_drop = sum(
+            stats.helper_bytes_estimate for stats in nested_helper_stats
+        )
+        runtime.nested_helper_peak_live_bytes_after_drop = (
+            runtime.nested_helper_peak_live_bytes_before_drop
+        )
+        runtime.nested_helper_frame_width_before_drop = len(frame.columns)
+        runtime.nested_helper_frame_width_after_drop = len(frame.columns)
+
+        if not is_helper_lifecycle_active(runtime.helper_lifecycle_mode):
+            for stats in helper_stats:
+                if stats.parent_helper_column_name is not None or stats.child_helper_columns:
+                    stats.nested_helper_miss_reason = "mode_disabled"
+                    self._append_helper_trace_event(stats, "nested_helper_drop_missed")
+            return frame
+
+        drop_columns: list[str] = []
+        for stats in helper_stats:
+            if not stats.helper_drop_candidate:
+                continue
+            stats.helper_drop_revalidated = True
+            allowed, miss_reason = self._revalidate_helper_drop(
+                stats=stats,
+                frame=frame,
+                output_source_columns=output_source_columns,
+            )
+            if not allowed:
+                stats.helper_drop_missed = True
+                stats.helper_drop_miss_reason = miss_reason
+                if stats.helper_drop_candidate_kind == "second_wave_nested":
+                    stats.nested_helper_miss_reason = miss_reason
+                    self._append_helper_trace_event(stats, "nested_helper_revalidate_fail")
+                elif stats.parent_helper_column_name is not None or stats.child_helper_columns:
+                    stats.nested_helper_miss_reason = miss_reason
+                    self._append_helper_trace_event(stats, "nested_helper_drop_missed")
+                continue
+            if stats.helper_drop_candidate_kind == "second_wave_nested":
+                self._append_helper_trace_event(stats, "nested_helper_revalidate_pass")
+            if stats.helper_column_name is not None:
+                drop_columns.append(stats.helper_column_name)
+
+        if not drop_columns:
+            runtime.helper_drop_miss_count = sum(
+                1 for stats in helper_stats if stats.helper_drop_missed
+            )
+            runtime.nested_helper_drop_missed_count = sum(
+                1
+                for stats in nested_helper_stats
+                if stats.helper_drop_missed or stats.nested_helper_miss_reason
+            )
+            return frame
+
+        drop_set = set(drop_columns)
+        for stats in helper_stats:
+            if stats.helper_column_name not in drop_set:
+                continue
+            dropped_at_step = stats.helper_drop_safe_step
+            stats.helper_dropped_at_step = dropped_at_step
+            stats.helper_drop_delay_steps = (
+                max(0, dropped_at_step - stats.helper_drop_safe_step)
+                if dropped_at_step is not None and stats.helper_drop_safe_step is not None
+                else None
+            )
+            stats.helper_drop_reason = "batch_safe_projection"
+            stats.helper_retained_until_end = False
+            if stats.helper_drop_candidate_kind == "second_wave_nested":
+                self._append_helper_trace_event(stats, "nested_helper_dropped")
+
+        for cache_key, column_name in list(stage_cache.items()):
+            if column_name in drop_set:
+                stage_cache.pop(cache_key, None)
+        for record in runtime.registry.records.values():
+            if record.column_name in drop_set:
+                record.is_alive = False
+                record.is_dropped = True
+                record.dropped_after_planned_last_use = True
+
+        remaining_columns = [column for column in frame.columns if column not in drop_set]
+        dropped_frame = frame.select(remaining_columns)
+        runtime.observe_frame(dropped_frame)
+
+        dropped_stats = [
+            stats for stats in helper_stats if stats.helper_dropped_at_step is not None
+        ]
+        missed_stats = [stats for stats in helper_stats if stats.helper_drop_missed]
+        runtime.helper_dropped_count = len(dropped_stats)
+        runtime.helper_drop_miss_count = len(missed_stats)
+        runtime.helper_peak_live_bytes_after_drop = sum(
+            stats.helper_bytes_estimate
+            for stats in helper_stats
+            if stats.helper_dropped_at_step is None
+        )
+        runtime.helper_frame_width_after_drop = len(dropped_frame.columns)
+        helper_drop_delays = [
+            stats.helper_drop_delay_steps
+            for stats in dropped_stats
+            if stats.helper_drop_delay_steps is not None
+        ]
+        runtime.helper_drop_delay_steps_avg = (
+            sum(helper_drop_delays) / len(helper_drop_delays)
+            if helper_drop_delays
+            else 0.0
+        )
+        runtime.helper_drop_delay_steps_max = max(helper_drop_delays, default=0)
+        runtime.helper_lifecycle_effective = helper_lifecycle_effective(
+            helper_dropped_count=runtime.helper_dropped_count,
+            helper_drop_miss_count=runtime.helper_drop_miss_count,
+            helper_peak_live_bytes_before_drop=runtime.helper_peak_live_bytes_before_drop,
+            helper_peak_live_bytes_after_drop=runtime.helper_peak_live_bytes_after_drop,
+            helper_drop_delay_steps_max=runtime.helper_drop_delay_steps_max,
+        )
+        nested_dropped_stats = [
+            stats
+            for stats in nested_helper_stats
+            if stats.helper_dropped_at_step is not None
+            and stats.helper_drop_candidate_kind == "second_wave_nested"
+        ]
+        nested_missed_stats = [
+            stats
+            for stats in nested_helper_stats
+            if stats.helper_drop_missed or stats.nested_helper_miss_reason
+        ]
+        runtime.nested_helper_dropped_count = len(nested_dropped_stats)
+        runtime.nested_helper_drop_missed_count = len(nested_missed_stats)
+        runtime.nested_helper_peak_live_bytes_after_drop = sum(
+            stats.helper_bytes_estimate
+            for stats in nested_helper_stats
+            if stats.helper_dropped_at_step is None
+        )
+        runtime.nested_helper_frame_width_after_drop = len(dropped_frame.columns)
+        runtime.nested_helper_lifecycle_effective = (
+            runtime.helper_lifecycle_mode == "second_wave_nested"
+            and runtime.nested_helper_dropped_count > 0
+        )
+        return dropped_frame
+
+    def _record_result_store_profile(
+        self,
+        *,
+        result_store: NodeResultStore,
+        runtime: OrderedBatchRuntime,
+        lifecycle_plans_by_node_id: dict[str, object],
+        restore_assemble_step: int,
+        append_step: int,
+        finalize_step: int,
+        batch_end_step: int,
+        output_source_columns: set[str] | None = None,
+    ) -> None:
+        runtime.restore_assemble_step = restore_assemble_step
+        runtime.append_step = append_step
+        runtime.finalize_step = finalize_step
+        runtime.batch_end_step = batch_end_step
+        result_store.mark_drop_misses()
+        runtime.result_store_peak_entry_count = result_store.peak_entry_count
+        runtime.node_compute_count = sum(
+            1 for item in result_store.stats.values() if item.compute_count > 0
+        )
+        runtime.node_hit_count = sum(1 for item in result_store.stats.values() if item.hit_count > 0)
+        runtime.node_store_compute_calls = result_store.total_compute_calls()
+        runtime.total_compute_calls = (
+            runtime.node_store_compute_calls + runtime.compiled_output_heavy_occurrence_count
+        )
+        runtime.total_store_hits = result_store.total_store_hits()
+        runtime.node_store_read_count = result_store.total_node_store_reads()
+        runtime.reuse_consumer_count = result_store.total_reuse_consumers()
+        runtime.shared_node_hit_rate = result_store.shared_hit_rate()
+        runtime.node_store_compute_time_ms = result_store.total_compute_time_ms()
+        runtime.compute_time_ms = runtime.node_store_compute_time_ms
+        runtime.store_write_time_ms = result_store.total_store_write_time_ms()
+        runtime.store_hit_time_ms = result_store.total_store_hit_time_ms()
+        runtime.lifecycle_candidate_count = sum(
+            1
+            for plan in lifecycle_plans_by_node_id.values()
+            if getattr(plan, "drop_candidate", False)
+        )
+        releasable_stats = [
+            stats
+            for stats in result_store.stats.values()
+            if stats.theoretical_release_step is not None
+            and stats.theoretical_release_step <= batch_end_step
+        ]
+        runtime.lifecycle_releasable_node_count = len(releasable_stats)
+        runtime.lifecycle_peak_live_node_count = len(
+            [stats for stats in result_store.stats.values() if stats.compute_count > 0]
+        )
+        runtime.lifecycle_peak_live_bytes_est = sum(
+            stats.bytes_estimate
+            for stats in result_store.stats.values()
+            if stats.compute_count > 0
+        )
+        runtime.peak_live_bytes_est_before_drop = runtime.lifecycle_peak_live_bytes_est
+        live_after_drop_stats = [
+            stats
+            for stats in result_store.stats.values()
+            if stats.compute_count > 0 and stats.dropped_at_step is None
+        ]
+        runtime.peak_live_node_count_after_drop = len(live_after_drop_stats)
+        runtime.peak_live_bytes_est_after_drop = sum(
+            stats.bytes_estimate for stats in live_after_drop_stats
+        )
+        runtime.multi_node_overlap_peak = runtime.lifecycle_peak_live_node_count
+        runtime.multi_node_peak_live_bytes_before = runtime.peak_live_bytes_est_before_drop
+        runtime.multi_node_peak_live_bytes_after = runtime.peak_live_bytes_est_after_drop
+        structural_release_lags = [
+            max(0, batch_end_step - stats.theoretical_release_step)
+            for stats in releasable_stats
+            if stats.theoretical_release_step is not None
+        ]
+        finalize_retention_lags = [
+            max(0, finalize_step - stats.theoretical_release_step)
+            for stats in releasable_stats
+            if stats.theoretical_release_step is not None
+        ]
+        runtime.avg_release_lag_steps = (
+            sum(structural_release_lags) / len(structural_release_lags)
+            if structural_release_lags
+            else 0.0
+        )
+        runtime.max_release_lag_steps = max(structural_release_lags, default=0)
+        runtime.avg_structural_release_lag_steps = runtime.avg_release_lag_steps
+        runtime.max_structural_release_lag_steps = runtime.max_release_lag_steps
+        runtime.avg_finalize_retention_lag_steps = (
+            sum(finalize_retention_lags) / len(finalize_retention_lags)
+            if finalize_retention_lags
+            else 0.0
+        )
+        runtime.max_finalize_retention_lag_steps = max(finalize_retention_lags, default=0)
+
+        potential_savings_by_node: dict[str, int] = {}
+        l2_first_wave_candidate_by_node: dict[str, bool] = {}
+        native_eligibility_by_node: dict[str, str] = {}
+        native_blocker_by_node: dict[str, str] = {}
+        native_rewrite_applied_by_node: dict[str, bool] = {}
+        native_helper_usage_pattern_by_node: dict[str, str] = {}
+        output_source_columns = output_source_columns or set()
+        self._prepare_helper_lifecycle_metadata(
+            result_store=result_store,
+            runtime=runtime,
+            lifecycle_plans_by_node_id=lifecycle_plans_by_node_id,
+            restore_assemble_step=restore_assemble_step,
+            finalize_step=finalize_step,
+            batch_end_step=batch_end_step,
+            output_source_columns=output_source_columns,
+        )
+        for stats in result_store.stats.values():
+            lifecycle_plan = lifecycle_plans_by_node_id.get(stats.node_id)
+            node_lifecycle_class = self._node_lifecycle_class(stats.identity)
+            structural_lag = (
+                max(0, batch_end_step - stats.theoretical_release_step)
+                if stats.theoretical_release_step is not None
+                else 0
+            )
+            potential_savings = stats.bytes_estimate * structural_lag
+            potential_savings_by_node[stats.node_id] = potential_savings
+            l2_first_wave_candidate_by_node[stats.node_id] = (
+                is_first_wave_candidate(
+                    FirstWaveCandidateInput(
+                        materialization_eligibility=stats.materialization_eligibility,
+                        drop_candidate=(
+                            getattr(lifecycle_plan, "drop_candidate", False)
+                            if lifecycle_plan is not None
+                            else False
+                        ),
+                        drop_blocker_reason=(
+                            getattr(lifecycle_plan, "drop_blocker_reason", "")
+                            if lifecycle_plan is not None
+                            else "missing_lifecycle_plan"
+                        ),
+                        structural_release_lag_steps=structural_lag,
+                        node_lifecycle_class=node_lifecycle_class,
+                        bytes_estimate=stats.bytes_estimate,
+                    )
+                )
+            )
+            if node_lifecycle_class == "native_heavy":
+                rewrite_applied = stats.node_store_read_count > 0
+                eligibility, blocker_reason = classify_native_heavy_lifecycle(
+                    NativeHeavyLifecycleInput(
+                        is_native_heavy=True,
+                        materialized=stats.compute_count > 0,
+                        rewrite_applied=rewrite_applied,
+                        logical_consumer_count=stats.reuse_consumer_count,
+                        effective_use_count=stats.node_store_read_count,
+                    )
+                )
+                native_eligibility_by_node[stats.node_id] = eligibility
+                native_blocker_by_node[stats.node_id] = blocker_reason
+                native_rewrite_applied_by_node[stats.node_id] = rewrite_applied
+                native_helper_usage_pattern_by_node[stats.node_id] = native_helper_usage_pattern(
+                    logical_consumer_count=stats.reuse_consumer_count,
+                    effective_use_count=stats.node_store_read_count,
+                )
+        runtime.potential_live_bytes_step_savings = sum(potential_savings_by_node.values())
+        runtime.l2_first_wave_candidate_count = sum(l2_first_wave_candidate_by_node.values())
+        native_stats = [
+            stats
+            for stats in result_store.stats.values()
+            if self._node_lifecycle_class(stats.identity) == "native_heavy"
+        ]
+        runtime.native_heavy_node_count = len(native_stats)
+        runtime.native_heavy_forbidden_count = sum(
+            1
+            for stats in native_stats
+            if native_eligibility_by_node.get(stats.node_id) == "forbidden"
+        )
+        runtime.native_heavy_observable_only_count = sum(
+            1
+            for stats in native_stats
+            if native_eligibility_by_node.get(stats.node_id) == "observable_only"
+        )
+        runtime.native_heavy_candidate_future_count = sum(
+            1
+            for stats in native_stats
+            if native_eligibility_by_node.get(stats.node_id) == "candidate_future"
+        )
+        runtime.native_compute_time_ms = sum(stats.compute_time_ms for stats in native_stats)
+        runtime.native_path_normalization_time_ms = sum(
+            stats.store_hit_time_ms for stats in native_stats
+        )
+        runtime.native_storage_residency_bytes = sum(stats.bytes_estimate for stats in native_stats)
+        runtime.native_node_store_read_count = sum(
+            stats.node_store_read_count for stats in native_stats
+        )
+        runtime.native_logical_consumer_count = sum(
+            stats.reuse_consumer_count for stats in native_stats
+        )
+        runtime.native_effective_use_count = runtime.native_node_store_read_count
+        runtime.native_rewrite_applied_count = sum(
+            1 for stats in native_stats if native_rewrite_applied_by_node.get(stats.node_id, False)
+        )
+        runtime.native_helper_usage_patterns = tuple(
+            sorted(
+                {
+                    pattern
+                    for pattern in native_helper_usage_pattern_by_node.values()
+                    if pattern
+                }
+            )
+        )
+        helper_stats = [
+            stats
+            for stats in result_store.stats.values()
+            if stats.compute_count > 0 and stats.helper_column_name is not None
+        ]
+        runtime.helper_column_count = len(helper_stats)
+        runtime.helper_releasable_count = sum(
+            1
+            for stats in helper_stats
+            if stats.helper_lifecycle_state == "logically_dead"
+            and stats.helper_drop_blocker_reason == ""
+        )
+        runtime.helper_blocked_count = sum(
+            1 for stats in helper_stats if stats.helper_drop_blocker_reason
+        )
+        runtime.helper_peak_live_bytes = sum(stats.helper_bytes_estimate for stats in helper_stats)
+        runtime.helper_potential_savings = sum(
+            stats.helper_potential_bytes_step_savings for stats in helper_stats
+        )
+        runtime.helper_blocker_reasons = tuple(
+            sorted(
+                {
+                    stats.helper_drop_blocker_reason
+                    for stats in helper_stats
+                    if stats.helper_drop_blocker_reason
+                }
+            )
+        )
+        if runtime.helper_peak_live_bytes_before_drop == 0:
+            runtime.helper_peak_live_bytes_before_drop = runtime.helper_peak_live_bytes
+            runtime.helper_peak_live_bytes_after_drop = runtime.helper_peak_live_bytes
+        if runtime.helper_frame_width_before_drop == 0:
+            runtime.helper_frame_width_before_drop = runtime.peak_frame_col_count
+            runtime.helper_frame_width_after_drop = runtime.peak_frame_col_count
+        helper_dropped_stats = [
+            stats for stats in helper_stats if stats.helper_dropped_at_step is not None
+        ]
+        helper_missed_stats = [stats for stats in helper_stats if stats.helper_drop_missed]
+        runtime.helper_dropped_count = len(helper_dropped_stats)
+        runtime.helper_drop_miss_count = len(helper_missed_stats)
+        if helper_dropped_stats or helper_missed_stats:
+            runtime.helper_peak_live_bytes_after_drop = sum(
+                stats.helper_bytes_estimate
+                for stats in helper_stats
+                if stats.helper_dropped_at_step is None
+            )
+            helper_drop_delays = [
+                stats.helper_drop_delay_steps
+                for stats in helper_dropped_stats
+                if stats.helper_drop_delay_steps is not None
+            ]
+            runtime.helper_drop_delay_steps_avg = (
+                sum(helper_drop_delays) / len(helper_drop_delays)
+                if helper_drop_delays
+                else 0.0
+            )
+            runtime.helper_drop_delay_steps_max = max(helper_drop_delays, default=0)
+            runtime.helper_lifecycle_effective = helper_lifecycle_effective(
+                helper_dropped_count=runtime.helper_dropped_count,
+                helper_drop_miss_count=runtime.helper_drop_miss_count,
+                helper_peak_live_bytes_before_drop=runtime.helper_peak_live_bytes_before_drop,
+                helper_peak_live_bytes_after_drop=runtime.helper_peak_live_bytes_after_drop,
+                helper_drop_delay_steps_max=runtime.helper_drop_delay_steps_max,
+            )
+        nested_helper_stats = [
+            stats
+            for stats in helper_stats
+            if stats.parent_helper_column_name is not None
+            or stats.child_helper_columns
+            or stats.nested_helper_candidate
+            or stats.nested_helper_miss_reason
+        ]
+        if runtime.nested_helper_peak_live_bytes_before_drop == 0:
+            runtime.nested_helper_peak_live_bytes_before_drop = sum(
+                stats.helper_bytes_estimate for stats in nested_helper_stats
+            )
+            runtime.nested_helper_peak_live_bytes_after_drop = (
+                runtime.nested_helper_peak_live_bytes_before_drop
+            )
+        if runtime.nested_helper_frame_width_before_drop == 0:
+            runtime.nested_helper_frame_width_before_drop = runtime.helper_frame_width_before_drop
+            runtime.nested_helper_frame_width_after_drop = runtime.helper_frame_width_after_drop
+        nested_dropped_stats = [
+            stats
+            for stats in nested_helper_stats
+            if stats.helper_dropped_at_step is not None
+            and stats.helper_drop_candidate_kind == "second_wave_nested"
+        ]
+        nested_missed_stats = [
+            stats
+            for stats in nested_helper_stats
+            if stats.helper_drop_missed or stats.nested_helper_miss_reason
+        ]
+        runtime.nested_helper_dropped_count = len(nested_dropped_stats)
+        runtime.nested_helper_drop_missed_count = len(nested_missed_stats)
+        if nested_dropped_stats or nested_missed_stats:
+            runtime.nested_helper_peak_live_bytes_after_drop = sum(
+                stats.helper_bytes_estimate
+                for stats in nested_helper_stats
+                if stats.helper_dropped_at_step is None
+            )
+            runtime.nested_helper_lifecycle_effective = (
+                runtime.helper_lifecycle_mode == "second_wave_nested"
+                and runtime.nested_helper_dropped_count > 0
+            )
+        dropped_stats = [
+            stats for stats in result_store.stats.values() if stats.dropped_at_step is not None
+        ]
+        missed_stats = [stats for stats in result_store.stats.values() if stats.drop_missed]
+        runtime.dropped_node_count = len(dropped_stats)
+        runtime.drop_hit_count = len(dropped_stats)
+        runtime.drop_miss_count = len(missed_stats)
+        drop_delays = [
+            stats.drop_delay_steps
+            for stats in dropped_stats
+            if stats.drop_delay_steps is not None
+        ]
+        runtime.drop_delay_steps_avg = (
+            sum(drop_delays) / len(drop_delays) if drop_delays else 0.0
+        )
+        runtime.drop_delay_steps_max = max(drop_delays, default=0)
+        runtime.per_node_drop_order = tuple(
+            stats.node_id
+            for stats in sorted(
+                dropped_stats,
+                key=lambda item: (
+                    item.dropped_at_step if item.dropped_at_step is not None else 10**12,
+                    item.node_id,
+                ),
+            )
+        )
+        runtime.nested_drop_order_valid = self._nested_drop_order_valid(
+            result_store=result_store,
+            lifecycle_plans_by_node_id=lifecycle_plans_by_node_id,
+        )
+        runtime.partial_reuse_safety_flag = all(
+            (
+                stats.dropped_at_step is None
+                or (
+                    stats.last_read_step is not None
+                    and stats.dropped_at_step >= stats.last_read_step
+                    and stats.ref_count_remaining == 0
+                )
+            )
+            for stats in result_store.stats.values()
+        ) and not runtime.drop_miss_count
+        runtime.lifecycle_effective = lifecycle_effective(
+            dropped_node_count=runtime.dropped_node_count,
+            drop_miss_count=runtime.drop_miss_count,
+            peak_live_bytes_est_before_drop=runtime.peak_live_bytes_est_before_drop,
+            peak_live_bytes_est_after_drop=runtime.peak_live_bytes_est_after_drop,
+            drop_delay_steps_max=runtime.drop_delay_steps_max,
+        )
+        self._assert_lifecycle_step_model(
+            result_store=result_store,
+            lifecycle_plans_by_node_id=lifecycle_plans_by_node_id,
+            restore_assemble_step=restore_assemble_step,
+            append_step=append_step,
+            finalize_step=finalize_step,
+            batch_end_step=batch_end_step,
+            nested_drop_order_valid=runtime.nested_drop_order_valid,
+        )
+
+        if runtime.profiler is None:
+            return
+        for stats in result_store.stats.values():
+            node_lifecycle_class = self._node_lifecycle_class(stats.identity)
+            if (
+                stats.compute_count == 0
+                and stats.hit_count == 0
+                and node_lifecycle_class != "native_heavy"
+            ):
+                continue
+            lifecycle_plan = lifecycle_plans_by_node_id.get(stats.node_id)
+            structural_release_lag = (
+                max(0, batch_end_step - stats.theoretical_release_step)
+                if stats.theoretical_release_step is not None
+                else None
+            )
+            finalize_retention_lag = (
+                max(0, finalize_step - stats.theoretical_release_step)
+                if stats.theoretical_release_step is not None
+                else None
+            )
+            retained_past_last_read = (
+                stats.retained_until_end
+                and stats.last_read_step is not None
+                and batch_end_step > stats.last_read_step
+            )
+            runtime.profiler.add_node_execution(
+                NodeExecutionDetail(
+                    node_id=stats.node_id,
+                    batch_id=runtime.batch_id,
+                    lifecycle_mode=runtime.lifecycle_mode,
+                    identity=repr(stats.identity),
+                    materialization_kind=stats.materialization_kind,
+                    materialization_reason=stats.materialization_reason,
+                    materialization_eligibility=stats.materialization_eligibility,
+                    node_lifecycle_class=node_lifecycle_class,
+                    consumer_count=stats.consumer_count,
+                    reuse_consumer_count=stats.reuse_consumer_count,
+                    compute_count=stats.compute_count,
+                    node_store_read_count=stats.node_store_read_count,
+                    hit_count=stats.hit_count,
+                    compute_time_ms=stats.compute_time_ms,
+                    store_write_time_ms=stats.store_write_time_ms,
+                    store_hit_time_ms=stats.store_hit_time_ms,
+                    planner_producer_step=(
+                        getattr(lifecycle_plan, "producer_step", None)
+                        if lifecycle_plan is not None
+                        else None
+                    ),
+                    planner_consumer_steps=(
+                        getattr(lifecycle_plan, "consumer_steps", ())
+                        if lifecycle_plan is not None
+                        else ()
+                    ),
+                    planner_last_use_step=(
+                        getattr(lifecycle_plan, "last_use_step", None)
+                        if lifecycle_plan is not None
+                        else None
+                    ),
+                    planner_ref_count_initial=(
+                        getattr(lifecycle_plan, "ref_count_initial", 0)
+                        if lifecycle_plan is not None
+                        else 0
+                    ),
+                    planner_drop_candidate=(
+                        getattr(lifecycle_plan, "drop_candidate", False)
+                        if lifecycle_plan is not None
+                        else False
+                    ),
+                    planner_drop_blocker_reason=(
+                        getattr(lifecycle_plan, "drop_blocker_reason", "")
+                        if lifecycle_plan is not None
+                        else ""
+                    ),
+                    materialized_at_step=stats.materialized_at_step,
+                    first_read_step=stats.first_read_step,
+                    last_read_step=stats.last_read_step,
+                    retained_until_end=stats.retained_until_end,
+                    theoretical_release_step=stats.theoretical_release_step,
+                    release_lag_steps=structural_release_lag,
+                    restore_assemble_step=restore_assemble_step,
+                    append_step=append_step,
+                    finalize_step=finalize_step,
+                    batch_end_step=batch_end_step,
+                    structural_release_lag_steps=structural_release_lag,
+                    retained_past_last_read=retained_past_last_read,
+                    finalize_retention_lag_steps=finalize_retention_lag,
+                    potential_live_bytes_step_savings=potential_savings_by_node.get(
+                        stats.node_id,
+                        0,
+                    ),
+                    l2_first_wave_candidate=l2_first_wave_candidate_by_node.get(
+                        stats.node_id,
+                        False,
+                    ),
+                    active_drop_eligible=stats.active_drop_eligible,
+                    dropped_at_step=stats.dropped_at_step,
+                    drop_expected_step=stats.drop_expected_step,
+                    drop_delay_steps=stats.drop_delay_steps,
+                    drop_reason=stats.drop_reason,
+                    ref_count_remaining_final=stats.ref_count_remaining,
+                    drop_missed=stats.drop_missed,
+                    drop_miss_reason=stats.drop_miss_reason,
+                    node_depth=(
+                        getattr(lifecycle_plan, "node_depth", 0)
+                        if lifecycle_plan is not None
+                        else 0
+                    ),
+                    parent_node_id=(
+                        getattr(lifecycle_plan, "parent_node_id", None)
+                        if lifecycle_plan is not None
+                        else None
+                    ),
+                    dependency_chain=(
+                        getattr(lifecycle_plan, "dependency_chain", ())
+                        if lifecycle_plan is not None
+                        else ()
+                    ),
+                    bytes_estimate=stats.bytes_estimate,
+                    native_heavy_lifecycle_eligibility=native_eligibility_by_node.get(
+                        stats.node_id,
+                        "",
+                    ),
+                    native_heavy_blocker_reason=native_blocker_by_node.get(
+                        stats.node_id,
+                        "",
+                    ),
+                    native_compute_time_ms=(
+                        stats.compute_time_ms if node_lifecycle_class == "native_heavy" else 0.0
+                    ),
+                    native_path_normalization_time_ms=(
+                        stats.store_hit_time_ms if node_lifecycle_class == "native_heavy" else 0.0
+                    ),
+                    native_storage_residency_bytes=(
+                        stats.bytes_estimate if node_lifecycle_class == "native_heavy" else 0
+                    ),
+                    native_node_store_read_count=(
+                        stats.node_store_read_count if node_lifecycle_class == "native_heavy" else 0
+                    ),
+                    native_logical_consumer_count=(
+                        stats.reuse_consumer_count if node_lifecycle_class == "native_heavy" else 0
+                    ),
+                    native_effective_use_count=(
+                        stats.node_store_read_count if node_lifecycle_class == "native_heavy" else 0
+                    ),
+                    native_fallback_eval_count=(
+                        runtime.native_fallback_eval_count
+                        if node_lifecycle_class == "native_heavy"
+                        and stats.node_store_read_count == 0
+                        else 0
+                    ),
+                    native_rewrite_applied=native_rewrite_applied_by_node.get(
+                        stats.node_id,
+                        False,
+                    ),
+                    native_helper_usage_pattern=native_helper_usage_pattern_by_node.get(
+                        stats.node_id,
+                        "",
+                    ),
+                    helper_column_name=stats.helper_column_name,
+                    helper_column_created_step=stats.helper_column_created_step,
+                    helper_last_use_step=stats.helper_last_use_step,
+                    helper_retained_until_end=stats.helper_retained_until_end,
+                    helper_structural_lag_steps=stats.helper_structural_lag_steps,
+                    helper_bytes_estimate=stats.helper_bytes_estimate,
+                    helper_potential_bytes_step_savings=(
+                        stats.helper_potential_bytes_step_savings
+                    ),
+                    helper_lifecycle_state=stats.helper_lifecycle_state,
+                    helper_drop_blocker_reason=stats.helper_drop_blocker_reason,
+                    helper_depth=stats.helper_depth,
+                    parent_helper_column_name=stats.parent_helper_column_name,
+                    child_helper_columns=stats.child_helper_columns,
+                    helper_logical_last_use_step=stats.helper_logical_last_use_step,
+                    helper_structural_dependency_end_step=(
+                        stats.helper_structural_dependency_end_step
+                    ),
+                    helper_drop_candidate=stats.helper_drop_candidate,
+                    helper_drop_candidate_kind=stats.helper_drop_candidate_kind,
+                    helper_logical_death_step=stats.helper_logical_death_step,
+                    helper_drop_safe_step=stats.helper_drop_safe_step,
+                    helper_drop_revalidated=stats.helper_drop_revalidated,
+                    helper_dropped_at_step=stats.helper_dropped_at_step,
+                    helper_drop_delay_steps=stats.helper_drop_delay_steps,
+                    helper_drop_reason=stats.helper_drop_reason,
+                    helper_drop_missed=stats.helper_drop_missed,
+                    helper_drop_miss_reason=stats.helper_drop_miss_reason,
+                    nested_helper_candidate=stats.nested_helper_candidate,
+                    nested_helper_trace_events=stats.nested_helper_trace_events,
+                    nested_helper_miss_reason=stats.nested_helper_miss_reason,
+                    recomputation_expansion_if_inline=(
+                        stats.recomputation_expansion_if_inline
+                    ),
+                    recomputation_guardrail_pass=stats.recomputation_guardrail_pass,
+                )
+            )
+
+    @staticmethod
+    def _nested_drop_order_valid(
+        *,
+        result_store: NodeResultStore,
+        lifecycle_plans_by_node_id: dict[str, object],
+    ) -> bool:
+        for stats in result_store.stats.values():
+            lifecycle_plan = lifecycle_plans_by_node_id.get(stats.node_id)
+            parent_node_id = (
+                getattr(lifecycle_plan, "parent_node_id", None)
+                if lifecycle_plan is not None
+                else None
+            )
+            if parent_node_id is None:
+                continue
+            parent_stats = result_store.stats.get(parent_node_id)
+            if parent_stats is None:
+                continue
+            if stats.dropped_at_step is None or parent_stats.dropped_at_step is None:
+                continue
+            if stats.dropped_at_step > parent_stats.dropped_at_step:
+                return False
+        return True
+
+    def _assert_lifecycle_step_model(
+        self,
+        *,
+        result_store: NodeResultStore,
+        lifecycle_plans_by_node_id: dict[str, object],
+        restore_assemble_step: int,
+        append_step: int,
+        finalize_step: int,
+        batch_end_step: int,
+        nested_drop_order_valid: bool,
+    ) -> None:
+        max_last_use_step = max(
+            (
+                getattr(plan, "last_use_step", 0) or 0
+                for plan in lifecycle_plans_by_node_id.values()
+            ),
+            default=0,
+        )
+        if not (
+            batch_end_step >= finalize_step >= append_step >= restore_assemble_step >= max_last_use_step
+        ):
+            raise ExecutionError(
+                "Lifecycle step ordering invariant failed: expected "
+                "producer/consumer -> restore_assemble -> append -> finalize -> batch_end"
+            )
+
+        for stats in result_store.stats.values():
+            if stats.helper_dropped_at_step is not None:
+                if (
+                    stats.helper_drop_safe_step is None
+                    or stats.helper_dropped_at_step < stats.helper_drop_safe_step
+                ):
+                    raise ExecutionError(
+                        f"Helper lifecycle dropped node {stats.node_id} before safe step"
+                    )
+                if (
+                    stats.helper_last_use_step is not None
+                    and stats.helper_drop_safe_step < stats.helper_last_use_step
+                ):
+                    raise ExecutionError(
+                        f"Helper lifecycle safe step precedes last use for node {stats.node_id}"
+                    )
+            if stats.dropped_at_step is None:
+                continue
+            if stats.drop_expected_step != stats.theoretical_release_step:
+                raise ExecutionError(
+                    f"Lifecycle drop expected step drifted for node {stats.node_id}"
+                )
+            if stats.drop_expected_step is None or stats.dropped_at_step < stats.drop_expected_step:
+                raise ExecutionError(
+                    f"Lifecycle dropped node {stats.node_id} before its expected step"
+                )
+
+        if is_lifecycle_active(self.lifecycle_mode) and not nested_drop_order_valid:
+            raise ExecutionError("Lifecycle nested drop order invariant failed")
+
+    @staticmethod
+    def _node_lifecycle_class(identity: tuple) -> str:
+        if len(identity) >= 2 and identity[0] == "call":
+            function_name = identity[1]
+            if function_name in {"argmax", "argmin"}:
+                return "native_heavy"
+            if len(identity) >= 3:
+                route_sensitive = identity[2]
+                if isinstance(route_sensitive, tuple) and len(route_sensitive) >= 4:
+                    execution_kind = route_sensitive[1]
+                    window_kind = route_sensitive[2]
+                    if window_kind in {"rolling", "positional", "segmented"}:
+                        return "shared_heavy"
+                    if execution_kind in {"time_series", "cross_sectional"}:
+                        return "ordered"
+        return "other"
+
+    def _project_frame_for_output_expressions(
+        self,
+        frame: pl.DataFrame,
+        *,
+        row_index_name: str,
+        output_expressions: list[tuple[str, pl.Expr]],
+    ) -> pl.DataFrame:
+        if self.frame_projection_mode != "dependency_driven":
+            return frame
+        required_columns: set[str] = {row_index_name}
+        try:
+            for _output_name, expr in output_expressions:
+                required_columns.update(str(name) for name in expr.meta.root_names())
+        except Exception:
+            # Projection is an optimization boundary. If root discovery is not
+            # available for a future expression type, keep the full frame.
+            return frame
+
+        frame_columns = set(frame.columns)
+        if not required_columns <= frame_columns:
+            return frame
+        projected_columns = [column for column in frame.columns if column in required_columns]
+        if len(projected_columns) == len(frame.columns):
+            return frame
+        return frame.select(projected_columns)
+
     def _evaluate_many_ordered_batch_plan(
         self,
         batch_plan: BatchExecutionPlan,
         *,
-        compiled_time_items: list[tuple[str, ValidationResult, pl.Expr]],
+        compiled_time_items: list[tuple[str, Expr, ValidationResult, pl.Expr]],
     ) -> pl.DataFrame:
         if (
             not compiled_time_items
@@ -762,9 +2780,45 @@ class Executor:
         reserved_names = set(sorted_df.columns)
         stage_cache: dict[tuple, str] = {}
         output_names: list[str] = []
+        output_expressions: list[tuple[str, pl.Expr]] = []
+        output_source_columns: set[str] = set()
+        result_store = NodeResultStore()
+        dag_nodes_by_output: dict[str, str] = {}
+        dag_identity_by_node_id: dict[str, tuple] = {}
+        dag_nodes_by_identity: dict[tuple, DagNode] = {}
+        lifecycle_plans_by_node_id: dict[str, object] = {}
+        lifecycle_read_cursor_by_node_id: dict[str, int] = {}
+        materialized_column_by_identity: dict[tuple, str] = {}
+        if batch_plan.dag is not None:
+            lifecycle_plans_by_node_id = batch_plan.dag.lifecycle_plan_by_node_id()
+            for node in batch_plan.dag.nodes:
+                dag_nodes_by_identity[node.identity] = node
+                dag_identity_by_node_id[node.node_id] = node.identity
+                for output_name in node.output_names:
+                    dag_nodes_by_output[output_name] = node.node_id
+                if node.materialize:
+                    result_store.register_policy(
+                        node_id=node.node_id,
+                        identity=node.identity,
+                        materialization_kind=node.materialization_kind,
+                        consumer_count=max(
+                            node.occurrence_count,
+                            len(node.consumers) + len(node.output_names),
+                        ),
+                        materialization_reason=node.materialization_reason,
+                        materialization_eligibility=node.materialization_eligibility,
+                        recomputation_expansion_if_inline=(
+                            node.recomputation_expansion_if_inline
+                        ),
+                        recomputation_guardrail_pass=node.recomputation_guardrail_pass,
+                    )
         planned_stage_consumers = self._plan_ordered_batch_stage_consumers(batch_plan)
         runtime: OrderedBatchRuntime | None = None
-        if self.profile_recorder is not None or self.lifecycle_enabled:
+        if (
+            self.profile_recorder is not None
+            or is_lifecycle_active(self.lifecycle_mode)
+            or is_helper_lifecycle_active(self.helper_lifecycle_mode)
+        ):
             batch_index = len(self.profile_recorder.batches) + 1 if self.profile_recorder else 1
             batch_id = (
                 f"{self.profile_recorder.run_id}:batch:{batch_index}"
@@ -775,7 +2829,9 @@ class Executor:
                 batch_id=batch_id,
                 profiler=self.profile_recorder,
                 registry=StageRegistry(batch_id=batch_id, profiler=self.profile_recorder),
-                lifecycle_enabled=self.lifecycle_enabled,
+                lifecycle_mode=self.lifecycle_mode,
+                helper_lifecycle_mode=self.helper_lifecycle_mode,
+                helper_lifecycle_workload=self.helper_lifecycle_workload,
                 expression_count=(
                     len(compiled_time_items)
                     + len(batch_plan.staged_items)
@@ -792,16 +2848,138 @@ class Executor:
                 peak_rss_mb=rss_before,
                 planned_stage_consumers=planned_stage_consumers,
             )
+            if batch_plan.dag is not None:
+                runtime.ast_node_count = batch_plan.dag.ast_node_count
+                runtime.dag_node_count = batch_plan.dag.dag_node_count
+                runtime.deduplicated_node_count = batch_plan.dag.deduplicated_node_count
+                runtime.shared_node_count = batch_plan.dag.shared_node_count
+                runtime.materialized_node_count = batch_plan.dag.materialized_node_count
+                runtime.expensive_node_count = batch_plan.dag.expensive_node_count
+                runtime.estimated_unshared_compute_calls = sum(
+                    node.occurrence_count for node in batch_plan.dag.nodes if node.materialize
+                )
+                guardrail_candidates = [
+                    node
+                    for node in batch_plan.dag.nodes
+                    if node.default_materialize and node.recomputation_expansion_if_inline > 0
+                ]
+                runtime.recomputation_guardrail_candidate_count = len(guardrail_candidates)
+                runtime.recomputation_guardrail_allowed_count = sum(
+                    1 for node in guardrail_candidates if node.recomputation_guardrail_pass
+                )
+                runtime.recomputation_guardrail_blocked_count = sum(
+                    1 for node in guardrail_candidates if not node.recomputation_guardrail_pass
+                )
+                runtime.recomputation_expansion_estimate = sum(
+                    node.recomputation_expansion_if_inline
+                    for node in guardrail_candidates
+                    if node.recomputation_guardrail_pass
+                )
+                runtime.recomputation_expansion_actual_delta = sum(
+                    node.recomputation_expansion_if_inline
+                    for node in guardrail_candidates
+                    if not node.materialize
+                )
 
         if compiled_time_items:
-            sorted_df = sorted_df.with_columns(
-                [compiled.alias(output_name) for output_name, _validation, compiled in compiled_time_items]
-            )
-            output_names.extend([output_name for output_name, _validation, _compiled in compiled_time_items])
             if runtime is not None:
-                runtime.observe_frame(sorted_df)
+                for output_name, _expr, _validation, _compiled in compiled_time_items:
+                    runtime.register_output_created(
+                        output_name,
+                        source_column_name=None,
+                        frame=sorted_df,
+                    )
 
         stage_started_at = time.perf_counter()
+        if self.dag_cse_enabled and batch_plan.dag is not None and compiled_time_items:
+            sorted_df, stage_cache = self._materialize_shared_dag_nodes_on_sorted_df(
+                sorted_df,
+                dag_nodes=batch_plan.dag.nodes,
+                reserved_names=reserved_names,
+                stage_cache=stage_cache,
+                result_store=result_store,
+                materialized_column_by_identity=materialized_column_by_identity,
+                dag_nodes_by_identity=dag_nodes_by_identity,
+                lifecycle_plans_by_node_id=lifecycle_plans_by_node_id,
+                runtime=runtime,
+            )
+
+        if compiled_time_items:
+            for output_name, expr, _validation, compiled in compiled_time_items:
+                output_expr = compiled
+                executed_expr = expr
+                if self.dag_cse_enabled and materialized_column_by_identity:
+                    rewritten_expr, hits = self._rewrite_expr_with_materialized_nodes(
+                        expr,
+                        materialized_column_by_identity=materialized_column_by_identity,
+                        dag_nodes_by_identity=dag_nodes_by_identity,
+                    )
+                    for node_id, count in hits.items():
+                        lifecycle_plan = lifecycle_plans_by_node_id.get(node_id)
+                        consumer_steps = (
+                            getattr(lifecycle_plan, "consumer_steps", ())
+                            if lifecycle_plan is not None
+                            else ()
+                        )
+                        cursor = lifecycle_read_cursor_by_node_id.get(node_id, 0)
+                        planned_steps = consumer_steps[cursor : cursor + count]
+                        read_step = (
+                            max(planned_steps)
+                            if planned_steps
+                            else (
+                                consumer_steps[min(cursor, len(consumer_steps) - 1)]
+                                if consumer_steps
+                                else None
+                            )
+                        )
+                        lifecycle_read_cursor_by_node_id[node_id] = cursor + max(count, 1)
+                        result_store.record_reads(
+                            node_id,
+                            read_count=count,
+                            consumer_count=1,
+                            read_step=read_step,
+                        )
+                        result_store.record_planned_consumption(
+                            node_id,
+                            step=read_step,
+                            multiplicity=len(planned_steps) if planned_steps else count,
+                            active_drop_enabled=is_lifecycle_active(self.lifecycle_mode),
+                        )
+                    output_expr = self._compile_expr(rewritten_expr)
+                    executed_expr = rewritten_expr
+
+                if batch_plan.dag is not None:
+                    heavy_occurrence_count = self._count_materializable_node_occurrences(
+                        executed_expr,
+                        dag_nodes_by_identity=dag_nodes_by_identity,
+                    )
+                    native_heavy_occurrence_count = self._count_materializable_node_occurrences(
+                        executed_expr,
+                        dag_nodes_by_identity=dag_nodes_by_identity,
+                        node_lifecycle_class="native_heavy",
+                    )
+                    runtime_heavy_count = heavy_occurrence_count if runtime is not None else 0
+                    if runtime is not None:
+                        runtime.compiled_output_heavy_occurrence_count += runtime_heavy_count
+                        if heavy_occurrence_count > 0:
+                            runtime.compiled_fallback_eval_count += 1
+                        if native_heavy_occurrence_count > 0:
+                            runtime.native_fallback_eval_count += 1
+
+                output_names.append(output_name)
+                output_expressions.append((output_name, output_expr))
+                node_id = dag_nodes_by_output.get(output_name, f"compiled_time_output:{output_name}")
+                result_store.put(
+                    NodeResultStoreEntry(
+                        node_id=node_id,
+                        identity=dag_identity_by_node_id.get(node_id, ("compiled_time_output", output_name)),
+                        materialization_kind="final",
+                        materialization_reason="none",
+                        output_name=output_name,
+                        is_final_output=True,
+                    )
+                )
+
         for item in batch_plan.positional_items:
             sorted_df, final_stage_name, stage_cache = self._materialize_positional_call_on_sorted_df(
                 sorted_df,
@@ -811,17 +2989,37 @@ class Executor:
                 runtime=runtime,
                 output_name=item.output_name,
             )
-            if final_stage_name != item.output_name:
-                if runtime is not None:
-                    runtime.consume_stage(final_stage_name, consumer_kind="output_alias", frame=sorted_df)
-                sorted_df = sorted_df.with_columns(pl.col(final_stage_name).alias(item.output_name))
+            if runtime is not None:
+                runtime.consume_stage(
+                    final_stage_name,
+                    consumer_kind="deferred_output",
+                    frame=sorted_df,
+                )
+                runtime.register_output_created(
+                    item.output_name,
+                    source_column_name=final_stage_name,
+                    frame=sorted_df,
+                )
             output_names.append(item.output_name)
+            output_expressions.append((item.output_name, pl.col(final_stage_name)))
+            output_source_columns.add(final_stage_name)
+            node_id = dag_nodes_by_output.get(item.output_name, f"output:{item.output_name}")
+            result_store.put(
+                NodeResultStoreEntry(
+                    node_id=node_id,
+                    identity=dag_identity_by_node_id.get(node_id, ("output", item.output_name)),
+                    materialization_kind="final",
+                    output_name=item.output_name,
+                    column_name=final_stage_name,
+                    is_final_output=True,
+                )
+            )
             if runtime is not None:
                 runtime.observe_frame(sorted_df)
                 sorted_df = runtime.sweep(
                     sorted_df,
                     stage_cache=stage_cache,
-                    output_names=set(output_names),
+                    output_names=output_source_columns | set(materialized_column_by_identity.values()),
                 )
 
         for item in batch_plan.materialized_ordered_items:
@@ -837,17 +3035,37 @@ class Executor:
                 runtime=runtime,
                 output_name=item.output_name,
             )
-            if final_stage_name != item.output_name:
-                if runtime is not None:
-                    runtime.consume_stage(final_stage_name, consumer_kind="output_alias", frame=sorted_df)
-                sorted_df = sorted_df.with_columns(pl.col(final_stage_name).alias(item.output_name))
+            if runtime is not None:
+                runtime.consume_stage(
+                    final_stage_name,
+                    consumer_kind="deferred_output",
+                    frame=sorted_df,
+                )
+                runtime.register_output_created(
+                    item.output_name,
+                    source_column_name=final_stage_name,
+                    frame=sorted_df,
+                )
             output_names.append(item.output_name)
+            output_expressions.append((item.output_name, pl.col(final_stage_name)))
+            output_source_columns.add(final_stage_name)
+            node_id = dag_nodes_by_output.get(item.output_name, f"output:{item.output_name}")
+            result_store.put(
+                NodeResultStoreEntry(
+                    node_id=node_id,
+                    identity=dag_identity_by_node_id.get(node_id, ("output", item.output_name)),
+                    materialization_kind="final",
+                    output_name=item.output_name,
+                    column_name=final_stage_name,
+                    is_final_output=True,
+                )
+            )
             if runtime is not None:
                 runtime.observe_frame(sorted_df)
                 sorted_df = runtime.sweep(
                     sorted_df,
                     stage_cache=stage_cache,
-                    output_names=set(output_names),
+                    output_names=output_source_columns | set(materialized_column_by_identity.values()),
                 )
 
         for staged_node in batch_plan.staged_nodes:
@@ -886,16 +3104,32 @@ class Executor:
                 )
 
         for binding in batch_plan.staged_output_bindings:
+            source_column = stage_cache[binding.cache_key]
             if runtime is not None:
                 runtime.consume_stage(
-                    stage_cache[binding.cache_key],
-                    consumer_kind="output_binding",
+                    source_column,
+                    consumer_kind="deferred_output",
                     frame=sorted_df,
                 )
-            sorted_df = sorted_df.with_columns(
-                pl.col(stage_cache[binding.cache_key]).alias(binding.output_name)
-            )
+                runtime.register_output_created(
+                    binding.output_name,
+                    source_column_name=source_column,
+                    frame=sorted_df,
+                )
             output_names.append(binding.output_name)
+            output_expressions.append((binding.output_name, pl.col(source_column)))
+            output_source_columns.add(source_column)
+            node_id = dag_nodes_by_output.get(binding.output_name, f"output:{binding.output_name}")
+            result_store.put(
+                NodeResultStoreEntry(
+                    node_id=node_id,
+                    identity=dag_identity_by_node_id.get(node_id, ("output", binding.output_name)),
+                    materialization_kind="final",
+                    output_name=binding.output_name,
+                    column_name=source_column,
+                    is_final_output=True,
+                )
+            )
             if runtime is not None:
                 runtime.observe_frame(sorted_df)
 
@@ -904,19 +3138,124 @@ class Executor:
             sorted_df = runtime.sweep(
                 sorted_df,
                 stage_cache=stage_cache,
-                output_names=set(output_names),
+                output_names=output_source_columns | set(materialized_column_by_identity.values()),
             )
 
         prepared.sorted_df = sorted_df
-        restore_started_at = time.perf_counter()
-        ordered_outputs = prepared.restore_output_columns(output_names)
+        restore_assemble_step = 0
+        append_step = 0
+        finalize_step = 0
+        batch_end_step = 0
+        ordered_outputs_with_row: pl.DataFrame | None = None
+        sorted_df = self._project_frame_for_output_expressions(
+            sorted_df,
+            row_index_name=prepared.row_index_name,
+            output_expressions=output_expressions,
+        )
         if runtime is not None:
-            runtime.restore_time_ms = (time.perf_counter() - restore_started_at) * 1000
+            runtime.observe_frame(sorted_df)
+        if self.output_attach_mode in {"finalize_select", "last_use_select"}:
+            compiled_eval_started_at = time.perf_counter()
+            ordered_outputs_with_row = sorted_df.select(
+                [
+                    prepared.row_index_name,
+                    *[expr.alias(output_name) for output_name, expr in output_expressions],
+                ]
+            )
+            if runtime is not None:
+                runtime.compiled_output_eval_time_ms = (
+                    time.perf_counter() - compiled_eval_started_at
+                ) * 1000
+                runtime.observe_frame(sorted_df)
+        else:
+            compiled_eval_started_at = time.perf_counter()
+            sorted_df = sorted_df.with_columns(
+                [expr.alias(output_name) for output_name, expr in output_expressions]
+            )
+            if runtime is not None:
+                runtime.compiled_output_eval_time_ms = (
+                    time.perf_counter() - compiled_eval_started_at
+                ) * 1000
+                runtime.observe_frame(sorted_df)
+        if runtime is not None:
+            last_consumer_step = max(
+                (
+                    step
+                    for plan in lifecycle_plans_by_node_id.values()
+                    for step in getattr(plan, "consumer_steps", ())
+                ),
+                default=0,
+            )
+            restore_assemble_step = last_consumer_step + 1
+            append_step = restore_assemble_step + 1
+            finalize_step = append_step + 1
+            batch_end_step = finalize_step + 1
+            self._prepare_helper_lifecycle_metadata(
+                result_store=result_store,
+                runtime=runtime,
+                lifecycle_plans_by_node_id=lifecycle_plans_by_node_id,
+                restore_assemble_step=restore_assemble_step,
+                finalize_step=finalize_step,
+                batch_end_step=batch_end_step,
+                output_source_columns=output_source_columns,
+            )
+            sorted_df = self._drop_first_wave_helper_columns(
+                frame=sorted_df,
+                result_store=result_store,
+                runtime=runtime,
+                stage_cache=stage_cache,
+                output_source_columns=output_source_columns,
+            )
+        prepared.sorted_df = sorted_df
+        restore_started_at = time.perf_counter()
+        if ordered_outputs_with_row is not None:
+            ordered_outputs = ordered_outputs_with_row.sort(prepared.row_index_name).drop(
+                prepared.row_index_name
+            )
+        else:
+            ordered_outputs = prepared.restore_output_columns(output_names)
+        if runtime is not None:
+            runtime.restore_assemble_time_ms = (time.perf_counter() - restore_started_at) * 1000
+            runtime.restore_time_ms = runtime.restore_assemble_time_ms
+            sorted_df = runtime.sweep(
+                sorted_df,
+                stage_cache=stage_cache,
+                output_names=set(),
+            )
+        temporary_output_names = [
+            output_name
+            for output_name in output_names
+            if output_name not in self.df.columns and output_name in sorted_df.columns
+        ]
+        if temporary_output_names:
+            sorted_df = sorted_df.drop(temporary_output_names)
+            if runtime is not None:
+                runtime.observe_frame(sorted_df)
         append_started_at = time.perf_counter()
         result = self.df.with_columns([ordered_outputs.get_column(output_name) for output_name in output_names])
         if runtime is not None:
             runtime.append_time_ms = (time.perf_counter() - append_started_at) * 1000
-            runtime.finish(frame=sorted_df, output_names=set(output_names))
+            self._record_result_store_profile(
+                result_store=result_store,
+                runtime=runtime,
+                lifecycle_plans_by_node_id=lifecycle_plans_by_node_id,
+                restore_assemble_step=restore_assemble_step,
+                append_step=append_step,
+                finalize_step=finalize_step,
+                batch_end_step=batch_end_step,
+                output_source_columns=output_source_columns,
+            )
+            for output_name in output_names:
+                runtime.mark_output_attached(
+                    output_name,
+                    frame=result,
+                    attached_to_working_frame=False,
+                )
+            runtime.finish(
+                frame=sorted_df,
+                output_names=set(output_names),
+                output_source_columns=output_source_columns,
+            )
         return result
 
     def _evaluate_materialized_ordered_column(
@@ -1053,12 +3392,25 @@ class Executor:
             mode=mode,
         )
         positional_total_time_ms = (time.perf_counter() - positional_started_at) * 1000
+        native_buffer_id: str | None = None
+        if runtime is not None and bool(kernel_profile["native_kernel_used"]):
+            native_buffer_id = runtime.register_native_buffer_created(
+                related_output_name=output_name or result_stage_name,
+                bytes_estimate=int(kernel_profile["native_output_buffer_bytes_estimate"]),
+                frame=sorted_df,
+                native_parallel_used=bool(kernel_profile["native_parallel_used"]),
+                parallel_worker_count=int(kernel_profile["group_parallelism_level"]),
+            )
         attach_started_at = time.perf_counter()
         attached = sorted_df.with_columns(result.alias(result_stage_name))
         result_attach_time_ms = (
             kernel_profile["series_construct_time_ms"]
             + (time.perf_counter() - attach_started_at) * 1000
         )
+        if runtime is not None and native_buffer_id is not None:
+            runtime.mark_native_buffer_attached(native_buffer_id, frame=attached)
+            del result
+            runtime.mark_native_buffer_released(native_buffer_id, frame=attached)
         rss_after = current_rss_mb()
         if runtime is not None:
             runtime.add_positional_phase(
@@ -1129,6 +3481,9 @@ class Executor:
                 "python_object_bridge_used": native_result.python_object_bridge_used,
                 "native_parallel_used": native_result.native_parallel_used,
                 "group_parallelism_level": native_result.group_parallelism_level,
+                "native_output_buffer_bytes_estimate": (
+                    native_result.output_buffer_bytes_estimate
+                ),
                 "group_count": group_count,
                 "avg_group_size": value_series.len() / group_count if group_count else 0.0,
                 "max_group_size": max(group_lengths, default=0),
@@ -1175,6 +3530,7 @@ class Executor:
             "python_object_bridge_used": True,
             "native_parallel_used": False,
             "group_parallelism_level": 1,
+            "native_output_buffer_bytes_estimate": 0,
             "group_count": group_count,
             "avg_group_size": len(values) / group_count if group_count else 0.0,
             "max_group_size": max(group_lengths, default=0),
@@ -1668,87 +4024,94 @@ class Executor:
         raise ExecutionError(f"Unsupported binary operator: {expr.operator}")
 
     def _compile_call(self, expr: CallNode) -> pl.Expr:
-        if expr.name == "abs":
+        function_name = canonical_function_name(expr.name)
+        if function_name == "abs":
             return self._compile_abs(expr)
-        if expr.name == "argmax":
+        if function_name == "argmax":
             return self._compile_argmax(expr)
-        if expr.name == "argmin":
+        if function_name == "argmin":
             return self._compile_argmin(expr)
-        if expr.name == "clip":
+        if function_name == "clip":
             return self._compile_clip(expr)
-        if expr.name == "corr":
+        if function_name == "corr":
             return self._compile_corr(expr)
-        if expr.name == "cov":
+        if function_name == "cov":
             return self._compile_cov(expr)
-        if expr.name == "delta":
+        if function_name == "delta":
             return self._compile_delta(expr)
-        if expr.name == "where":
+        if function_name == "where":
             return self._compile_where(expr)
-        if expr.name == "delay":
+        if function_name == "delay":
             return self._compile_delay(expr)
-        if expr.name == "skew":
+        if function_name == "skew":
             return self._compile_skew(expr)
-        if expr.name == "kurt":
+        if function_name == "kurt":
             return self._compile_kurt(expr)
-        if expr.name == "pct_change":
+        if function_name == "pct_change":
             return self._compile_pct_change(expr)
-        if expr.name == "ts_max":
+        if function_name == "log":
+            return self._compile_log(expr)
+        if function_name == "ts_max":
             return self._compile_ts_max(expr)
-        if expr.name == "ts_median":
+        if function_name == "ts_median":
             return self._compile_ts_median(expr)
-        if expr.name == "ts_mean":
+        if function_name == "ts_mean":
             return self._compile_ts_mean(expr)
-        if expr.name == "ts_min":
+        if function_name == "ts_min":
             return self._compile_ts_min(expr)
-        if expr.name == "ts_sum":
+        if function_name == "ts_sum":
             return self._compile_ts_sum(expr)
-        if expr.name == "ts_std":
+        if function_name == "ts_std":
             return self._compile_ts_std(expr)
-        if expr.name == "demean":
+        if function_name == "demean":
             return self._compile_demean(expr)
-        if expr.name == "fill_null":
+        if function_name == "fill_null":
             return self._compile_fill_null(expr)
-        if expr.name == "group_demean":
+        if function_name == "group_demean":
             return self._compile_group_demean(expr)
-        if expr.name == "group_rank":
+        if function_name == "group_rank":
             return self._compile_group_rank(expr)
-        if expr.name == "group_zscore":
+        if function_name == "group_zscore":
             return self._compile_group_zscore(expr)
-        if expr.name == "is_null":
+        if function_name == "is_null":
             return self._compile_is_null(expr)
-        if expr.name == "zscore":
+        if function_name == "zscore":
             return self._compile_zscore(expr)
-        if expr.name == "rank":
+        if function_name == "rank":
             return self._compile_rank(expr)
-        if expr.name == "seg_all":
+        if function_name == "scale":
+            return self._compile_scale(expr)
+        if function_name == "seg_all":
             return self._compile_seg_all(expr)
-        if expr.name == "seg_any":
+        if function_name == "seg_any":
             return self._compile_seg_any(expr)
-        if expr.name == "seg_count":
+        if function_name == "seg_count":
             return self._compile_seg_count(expr)
-        if expr.name == "seglen_all":
+        if function_name == "seglen_all":
             return self._compile_seglen_all(expr)
-        if expr.name == "seglen_any":
+        if function_name == "seglen_any":
             return self._compile_seglen_any(expr)
-        if expr.name == "seglen_count":
+        if function_name == "seglen_count":
             return self._compile_seglen_count(expr)
-        if expr.name == "seglen_mean":
+        if function_name == "seglen_mean":
             return self._compile_seglen_mean(expr)
-        if expr.name == "seglen_sum":
+        if function_name == "seglen_sum":
             return self._compile_seglen_sum(expr)
-        if expr.name == "seg_mean":
+        if function_name == "seg_mean":
             return self._compile_seg_mean(expr)
-        if expr.name == "seg_sum":
+        if function_name == "seg_sum":
             return self._compile_seg_sum(expr)
-        if expr.name == "sign":
+        if function_name == "sign":
             return self._compile_sign(expr)
-        if expr.name == "ts_all":
+        if function_name == "signedpower":
+            return self._compile_signedpower(expr)
+        if function_name == "ts_all":
             return self._compile_ts_all(expr)
-        if expr.name == "ts_any":
+        if function_name == "ts_any":
             return self._compile_ts_any(expr)
-        if expr.name == "ts_count":
+        if function_name == "ts_count":
             return self._compile_ts_count(expr)
-        if expr.name == "ts_rank":
+        if function_name == "ts_rank":
             return self._compile_ts_rank(expr)
 
         raise ExecutionError(f"Unsupported function in executor: {expr.name}")
@@ -1758,6 +4121,29 @@ class Executor:
             raise ExecutionError("abs(x) expects exactly 1 positional argument")
 
         return self._compile_expr(expr.args[0]).abs()
+
+    def _compile_log(self, expr: CallNode) -> pl.Expr:
+        if len(expr.args) != 1 or expr.kwargs:
+            raise ExecutionError("log(x) expects exactly 1 positional argument")
+
+        return self._compile_expr(expr.args[0]).log()
+
+    def _compile_signedpower(self, expr: CallNode) -> pl.Expr:
+        if len(expr.args) != 2 or expr.kwargs:
+            raise ExecutionError("signedpower(x, a) expects exactly 2 positional arguments")
+
+        value_expr = self._compile_expr(expr.args[0])
+        power = self._expect_scalar_number(expr.args[1], "signedpower")
+        sign_expr = (
+            pl.when(value_expr.is_null())
+            .then(None)
+            .when(value_expr < 0)
+            .then(-1.0)
+            .when(value_expr > 0)
+            .then(1.0)
+            .otherwise(0.0)
+        )
+        return sign_expr * value_expr.abs().pow(power)
 
     def _compile_argmax(self, expr: CallNode) -> pl.Expr:
         if len(expr.args) != 2 or expr.kwargs:
@@ -1915,6 +4301,11 @@ class Executor:
             )
 
         return int(value)
+
+    def _expect_scalar_number(self, expr: Expr, func_name: str) -> float:
+        if not isinstance(expr, NumberNode):
+            raise ExecutionError(f"Function '{func_name}' requires a scalar numeric literal")
+        return float(expr.value)
 
     def _expect_positive_numeric_literal(self, expr: Expr, func_name: str) -> int:
         value = self._expect_numeric_literal(expr, func_name)
@@ -2353,6 +4744,21 @@ class Executor:
 
         return (value_expr - mean_expr) / std_expr
 
+    def _compile_scale(self, expr: CallNode) -> pl.Expr:
+        if len(expr.args) not in {1, 2} or expr.kwargs:
+            raise ExecutionError("scale(x, a) expects 1 or 2 positional arguments")
+
+        value_expr = self._compile_expr(expr.args[0])
+        scale_to = self._expect_scalar_number(expr.args[1], "scale") if len(expr.args) == 2 else 1.0
+        denominator = value_expr.abs().sum().over(self.time_col)
+        return (
+            pl.when(value_expr.is_null())
+            .then(None)
+            .when(denominator.is_null() | (denominator == 0))
+            .then(None)
+            .otherwise(value_expr * scale_to / denominator)
+        )
+
     def _compile_rank(self, expr: CallNode) -> pl.Expr:
         if len(expr.args) != 1:
             raise ExecutionError("rank(x, ...) expects exactly 1 positional argument")
@@ -2451,6 +4857,16 @@ class Executor:
             mean_expr = value_expr.mean().over(self.time_col)
             std_expr = value_expr.std().over(self.time_col)
             return (value_expr - mean_expr) / std_expr
+
+        if staged_spec.func_name == "scale":
+            denominator = value_expr.abs().sum().over(self.time_col)
+            return (
+                pl.when(value_expr.is_null())
+                .then(None)
+                .when(denominator.is_null() | (denominator == 0))
+                .then(None)
+                .otherwise(value_expr * staged_spec.scale_to / denominator)
+            )
 
         if staged_spec.func_name == "rank":
             rank_expr = value_expr.rank(descending=not staged_spec.ascending).over(self.time_col)

@@ -1,0 +1,12 @@
+# R4 Executor-Native Reuse Benchmark
+
+- data: `data.parquet`
+- rows: `1000000`
+- lifecycle: `True`
+- lifecycle mode: `first_wave`
+- helper lifecycle mode: `first_wave`
+
+| workload | consumers | cse | lifecycle mode | helper mode | lifecycle effective | helper effective | sec | est no-reuse computes | attributed computes | node-store computes | compiled heavy occurrences | store reads | reuse consumers | native nodes | native eligibility | native compute ms | native path ms | native storage bytes | native reads | native logical consumers | native effective uses | native fallback evals | native rewrites | native helper patterns | helper cols | helper releasable | helper blocked | helper bytes | helper before bytes | helper after bytes | helper dropped | helper misses | helper frame before | helper frame after | helper delay avg | helper bytes-step | helper blockers | lifecycle candidates | releasable | peak live nodes | before bytes | after bytes | dropped | misses | drop delay avg | overlap peak | drop order | nested order | partial safe | batch end step | structural lag | finalize lag | bytes-step savings | L2 first-wave | hit rate | materialized | store peak | node-store compute ms | compiled eval ms | restore assemble ms | append ms | finalize ms | peak rss mb |
+| --- | ---: | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| nested_probe_c | 2 | False | first_wave | first_wave | False | False | 0.623170 | 2 | 2 | 0 | 2 | 0 | 0 | 0 | F:0/O:0/C:0 | 0.000 | 0.000 | 0 | 0 | 0 | 0 | 0 | 0 | `` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10 | 10 | 0.000 | 0 | `` | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0.000 | 0 | `` | True | True | 11 | 0.000 | 0.000 | 0 | 0 | 0.000 | 1 | 1 | 0.000 | 294.866 | 100.115 | 0.000 | 100.266 | 314.00 |
+| nested_probe_c | 2 | True | first_wave | first_wave | True | False | 0.519912 | 2 | 1 | 1 | 0 | 2 | 1 | 0 | F:0/O:0/C:0 | 0.000 | 0.000 | 0 | 0 | 0 | 0 | 0 | 0 | `` | 1 | 1 | 0 | 8000000 | 8000000 | 8000000 | 0 | 0 | 11 | 11 | 0.000 | 32000000 | `` | 1 | 1 | 1 | 8000000 | 0 | 1 | 0 | 0.000 | 1 | `n3` | True | True | 11 | 4.000 | 3.000 | 32000000 | 1 | 0.667 | 1 | 1 | 20.370 | 187.762 | 57.999 | 0.000 | 58.134 | 476.39 |

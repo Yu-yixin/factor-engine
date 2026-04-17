@@ -10,6 +10,7 @@ from factor_engine.ast_nodes import (
     UnaryOpNode,
     VariableNode,
 )
+from factor_engine.registry import canonical_function_name
 from factor_engine.errors import ParserError
 from factor_engine.tokens import Token, TokenType
 
@@ -172,7 +173,7 @@ class Parser:
                     break
 
         self._expect(TokenType.RPAREN, "Expected ')' after arguments")
-        return CallNode(name=name, args=args, kwargs=kwargs)
+        return CallNode(name=canonical_function_name(name), args=args, kwargs=kwargs)
 
     def _parse_list_literal(self) -> Expr:
         self._expect(TokenType.LBRACKET, "Expected '['")

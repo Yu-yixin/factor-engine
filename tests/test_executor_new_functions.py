@@ -1,3 +1,5 @@
+import math
+
 import polars as pl
 import pytest
 
@@ -128,6 +130,31 @@ def test_evaluate_abs_clip_and_sign():
     assert sign_result["result"].to_list() == [-1.0, 0.0, 1.0, None]
 
 
+def test_evaluate_alpha101_pointwise_helpers():
+    df = pl.DataFrame(
+        {
+            "close": [-4.0, 0.0, 1.0, 9.0, None],
+        }
+    )
+
+    log_result = Executor(df).evaluate(parse_expression("log(close)"))
+    signedpower_result = Executor(df).evaluate(parse_expression("signedpower(close, 0.5)"))
+
+    log_values = log_result["result"].to_list()
+    assert math.isnan(log_values[0])
+    assert math.isinf(log_values[1]) and log_values[1] < 0
+    assert log_values[2] == pytest.approx(0.0)
+    assert log_values[3] == pytest.approx(math.log(9.0))
+    assert log_values[4] is None
+
+    signedpower_values = signedpower_result["result"].to_list()
+    assert signedpower_values[0] == pytest.approx(-2.0)
+    assert signedpower_values[1] == pytest.approx(0.0)
+    assert signedpower_values[2] == pytest.approx(1.0)
+    assert signedpower_values[3] == pytest.approx(3.0)
+    assert signedpower_values[4] is None
+
+
 def test_new_functions_respect_code_groups_and_restore_input_order():
     df = pl.DataFrame(
         {
@@ -152,6 +179,51 @@ def test_ts_median_respects_code_groups_and_restores_input_order():
 
     result = Executor(df).evaluate(parse_expression("ts_median(close, 2)"))
     assert result["result"].to_list() == [3.0, 5.0, 5.0, 3.0]
+
+
+def test_scale_cross_section_contract_and_zero_denominator():
+    df = pl.DataFrame(
+        {
+            "time": [1, 1, 2, 2, 3, 3],
+            "code": ["A", "B", "A", "B", "A", "B"],
+            "close": [1.0, -3.0, 0.0, 0.0, None, None],
+        }
+    )
+
+    result = Executor(df).evaluate(parse_expression("scale(close, 2)"))
+
+    assert result["result"].to_list() == [0.5, -1.5, None, None, None, None]
+
+
+def test_alpha101_low_risk_functions_do_not_use_python_rolling_map(monkeypatch):
+    original = pl.Expr.rolling_map
+
+    def fail(self, *args, **kwargs):
+        raise AssertionError("low-risk Alpha101 functions should not call rolling_map")
+
+    monkeypatch.setattr(pl.Expr, "rolling_map", fail)
+    df = pl.DataFrame(
+        {
+            "time": [1, 1, 2, 2, 3, 3],
+            "code": ["A", "B", "A", "B", "A", "B"],
+            "close": [1.0, -2.0, 3.0, 4.0, None, 5.0],
+            "open": [2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
+        }
+    )
+
+    try:
+        engine = FactorEngine()
+        engine.evaluate("log(abs(close))", df)
+        engine.evaluate("signedpower(close, 2)", df)
+        engine.evaluate("scale(close)", df)
+        engine.evaluate("sum(close, 2)", df)
+        engine.evaluate("stddev(close, 2)", df)
+        engine.evaluate("correlation(open, close, 2)", df)
+        engine.evaluate("covariance(open, close, 2)", df)
+        engine.evaluate("min(close, 2)", df)
+        engine.evaluate("max(close, 2)", df)
+    finally:
+        monkeypatch.setattr(pl.Expr, "rolling_map", original)
 
 
 def test_argmax_respects_recent_tie_break_and_input_order():

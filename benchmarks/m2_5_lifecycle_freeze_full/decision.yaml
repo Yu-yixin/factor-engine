@@ -1,0 +1,11 @@
+lifecycle_status:
+  first_wave_stable: true
+  second_wave_nested_v1: true
+  rejection_audit_complete: true
+  regression_detected: false
+  safe_to_freeze: true
+lifecycle_value:
+  peak_memory_reduction: 100.0
+  performance_delta: -1.784
+  effective: true
+  second_wave_decision: KEEP

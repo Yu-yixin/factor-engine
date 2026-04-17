@@ -72,6 +72,16 @@ def test_parse_function_call():
     )
 
 
+def test_parse_alpha101_alias_call_to_canonical_function_name():
+    expr = parse_expression("sum(close, 5)")
+
+    assert expr == CallNode(
+        name="ts_sum",
+        args=[VariableNode("close"), NumberNode(5.0)],
+        kwargs={},
+    )
+
+
 def test_parse_function_call_with_kwargs():
     expr = parse_expression("rank(close, ascending=false, pct=true)")
 
