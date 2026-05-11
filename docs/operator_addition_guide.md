@@ -389,7 +389,7 @@ unsupported / requires design
 - `docs/ordered_roots_matrix.md`
 - `docs/ordered_boundary_rules.md`
 - `docs/ordered_correctness_audit.md`
-- `tests/test_ordered_audit.py`
+- `tests/integration/test_ordered_audit.py`
 
 并回答：
 
@@ -420,13 +420,13 @@ ordered audit 不完整，不接受新增 ordered 算子。
 最低测试集：
 
 1. registry 测试  
-   文件：`tests/test_registry_new_functions.py`
+   文件：`tests/unit/test_registry_new_functions.py`
 
 2. validator 测试  
    覆盖参数数量、非法 kwargs、类型错误、缺少 time/code/group 列。
 
 3. executor 语义测试  
-   文件按类别放入 `tests/test_executor*.py` 或新增专门测试。
+   文件按类别放入 `tests/integration/test_executor*.py` 或新增专门测试。
 
 4. FactorEngine 端到端测试  
    至少覆盖 `evaluate()`；如果可用于 batch，则覆盖 `evaluate_many()`。
@@ -485,7 +485,7 @@ ordered / native / performance-sensitive 算子还必须跑对应 benchmark 或 
 - `src/factor_engine/executor.py`
 - 必要时 `src/factor_engine/validator.py`
 - 必要时 `src/factor_engine/planner.py`
-- `tests/test_registry_new_functions.py`
+- `tests/unit/test_registry_new_functions.py`
 - executor / engine 语义测试
 - `docs/functions.md`
 - 如能力边界变化，更新 `docs/operator_addition_guide.md`
@@ -493,7 +493,7 @@ ordered / native / performance-sensitive 算子还必须跑对应 benchmark 或 
 ordered 算子还必须包含：
 
 - ordered audit 文档更新
-- `tests/test_ordered_audit.py`
+- `tests/integration/test_ordered_audit.py`
 - planner route inspection 测试
 - direct / nested / materialized child 结果一致性测试
 

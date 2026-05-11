@@ -73,7 +73,7 @@ where(not is_null(close), clip(ts_mean(close, 5), 0, 100), 0)
 
 ```powershell
 $env:PYTHONPATH="src"
-py examples/file_batch_workflow.py input.parquet expressions.yaml --output result.parquet
+py scripts/workflow/file_batch_workflow.py input.parquet expressions.yaml --output result.parquet
 ```
 
 ## Core Concepts
@@ -100,10 +100,27 @@ py examples/file_batch_workflow.py input.parquet expressions.yaml --output resul
 - `evaluate(expression, df, output_name="result")`
 - `evaluate_many(expressions, df)`
 
+## Repository Map
+
+- `src/factor_engine/`: core package and execution implementation.
+- `tests/`: layered test suite; see [tests/README.md](tests/README.md).
+- `examples/`: minimal usage examples only.
+- `scripts/`: workflow, maintenance, and developer utilities; see [scripts/README.md](scripts/README.md).
+- `benchmarks/`: benchmark scripts, curated reports, latest local runs, and archived snapshots; see [benchmarks/README.md](benchmarks/README.md).
+- `docs/current/`: current truth source for architecture, invariants, repository rules, setup, and cleanup plans.
+- `docs/history/`, `docs/benchmark/`, `docs/strategy/`, `docs/archive/`: historical context, benchmark methodology, future direction, and old references.
+- `artifacts/`, `outputs/`, and `data/`: local generated artifacts, runtime outputs, and data boundaries. Large/generated files should not be committed.
+
+New developers and AI coding agents should start with [docs/current/README.md](docs/current/README.md), then read [docs/current/architecture.md](docs/current/architecture.md) and [docs/current/invariants.md](docs/current/invariants.md) before changing behavior.
+
 ## Docs Navigation
 
+- [docs/README.md](docs/README.md)
+  - documentation topology and current/history split
 - [docs/index.md](docs/index.md)
   - 文档总导航与阅读顺序
+- [docs/current/README.md](docs/current/README.md)
+  - 当前真相源与推荐阅读顺序
 - [docs/language.md](docs/language.md)
   - DSL 语法、表达式类型、运算符优先级、逻辑与 null 规则
 - [docs/functions.md](docs/functions.md)
@@ -116,23 +133,23 @@ py examples/file_batch_workflow.py input.parquet expressions.yaml --output resul
   - 当前代码结构与模块边界
 - [docs/execution_planning_optimization.md](docs/execution_planning_optimization.md)
   - 执行规划、批量执行与缓存复用
-- [docs/execution_planner_v1.md](docs/execution_planner_v1.md)
+- [docs/history/execution_planner/execution_planner_v1.md](docs/history/execution_planner/execution_planner_v1.md)
   - `planner v1` 的 route 规划、staged materialization 规则与实现边界
-- [docs/execution_planner_v2.md](docs/execution_planner_v2.md)
+- [docs/history/execution_planner/execution_planner_v2.md](docs/history/execution_planner/execution_planner_v2.md)
   - `planner v2` 的递归 staged chain、深层链式调用修复范围与后续扩展方向
-- [docs/execution_planner_v3.md](docs/execution_planner_v3.md)
+- [docs/history/execution_planner/execution_planner_v3.md](docs/history/execution_planner/execution_planner_v3.md)
   - `planner v3` 的 CSE-ready key、batch staged source/prefix 复用，以及通往 DAG 的前置结构
-- [docs/execution_planner_v4.md](docs/execution_planner_v4.md)
+- [docs/history/execution_planner/execution_planner_v4.md](docs/history/execution_planner/execution_planner_v4.md)
   - `planner v4` 的 staged node graph、output binding，以及更接近 DAG 的 batch 执行形态
-- [docs/execution_planner_v5.md](docs/execution_planner_v5.md)
+- [docs/history/execution_planner/execution_planner_v5.md](docs/history/execution_planner/execution_planner_v5.md)
   - `planner v5` 的 ordered batch fusion：让 compiled ordered 输出和 staged graph 共用一个 prepared frame
-- [docs/execution_planner_v6.md](docs/execution_planner_v6.md)
+- [docs/history/execution_planner/execution_planner_v6.md](docs/history/execution_planner/execution_planner_v6.md)
   - `planner v6` 的 ordered-over-cross 修复：让 `corr/cov` 先物化 cross/grouped 输入，再做 ordered rolling
-- [docs/benchmark.md](docs/benchmark.md)
+- [docs/benchmark/benchmark.md](docs/benchmark/benchmark.md)
   - benchmark 口径与结果落点
 - [docs/documentation_policy.md](docs/documentation_policy.md)
   - 文档治理与再次优化条件
-- [docs/revolution.md](docs/revolution.md)
+- [docs/history/revolution.md](docs/history/revolution.md)
   - 演进记录与阶段性决策
 
 ## 开发与验证

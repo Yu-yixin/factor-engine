@@ -28,6 +28,15 @@ Phase 2 focus:
 - Avoid source refactoring and behavior changes.
 - Prepare later test, documentation, benchmark, and artifact physical re-layout.
 
+Phase 2.5 focus:
+
+- Physically layer tests into `unit/`, `integration/`, `workflow/`, `native/`, `perf/`, and `profiling/`.
+- Move benchmark and profiling entry points to `benchmarks/scripts/`.
+- Separate curated benchmark reports from archived benchmark snapshots.
+- Keep `examples/` focused on minimal usage examples and move workflow utilities to `scripts/`.
+- Split documentation topology into `current/`, `history/`, `archive/`, `benchmark/`, and `strategy/`.
+- Preserve source behavior; this phase is location and navigation cleanup only.
+
 ## Phase 3: Refactor
 
 - Split `executor.py` only after the test baseline is stable.

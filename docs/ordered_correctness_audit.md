@@ -59,7 +59,7 @@ The currently landed work includes:
 
 ## Test strategy
 
-`tests/test_ordered_audit.py` covers:
+`tests/integration/test_ordered_audit.py` covers:
 
 - inventory-backed route expectations for all audited roots
 - split-step equality between nested and manual materialized execution

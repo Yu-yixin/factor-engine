@@ -93,8 +93,8 @@ python examples\benchmark_stage_lifecycle.py
 
 This writes:
 
-- `benchmarks/stage_lifecycle.md`
-- per-workload V1/V2 profile directories under `benchmarks/stage_lifecycle/`
+- `benchmarks/reports/stage_lifecycle.md`
+- per-workload V1/V2 profile directories under `benchmarks/latest/stage_lifecycle/`
 
 The benchmark currently compares profiling-only V1 against lifecycle-enabled V2 for:
 
@@ -114,7 +114,7 @@ Run the focused validation package:
 
 ```powershell
 $env:PYTHONPATH="src;.venv\Lib\site-packages"
-python -m pytest tests\test_stage_lifecycle.py -q
+python -m pytest tests\profiling\test_stage_lifecycle.py -q
 ```
 
 For real minute parquet smoke comparison:
@@ -126,10 +126,10 @@ python examples\benchmark_stage_lifecycle_real_smoke.py --data data\minute_2026_
 
 The real smoke script writes:
 
-- `benchmarks/stage_lifecycle_real_smoke/v1/*`
-- `benchmarks/stage_lifecycle_real_smoke/v2/*`
-- `benchmarks/stage_lifecycle_real_smoke/latest_real_smoke_comparison.json`
-- `benchmarks/stage_lifecycle_real_smoke/real_smoke_report.md`
+- `benchmarks/latest/stage_lifecycle_real_smoke/v1/*`
+- `benchmarks/latest/stage_lifecycle_real_smoke/v2/*`
+- `benchmarks/latest/stage_lifecycle_real_smoke/latest_real_smoke_comparison.json`
+- `benchmarks/latest/stage_lifecycle_real_smoke/real_smoke_report.md`
 
 ## Positional Phase Profiling
 

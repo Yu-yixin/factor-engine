@@ -1,6 +1,6 @@
 # 执行规划与批量执行专题
 
-本文档是 Factor Engine 的执行规划专题说明，聚焦当前执行路径、批量执行机制、缓存复用与边界约束。历史方案讨论与阶段性决策演进请参见 [revolution.md](revolution.md)。
+本文档是 Factor Engine 的执行规划专题说明，聚焦当前执行路径、批量执行机制、缓存复用与边界约束。历史方案讨论与阶段性决策演进请参见 [revolution.md](history/revolution.md)。
 
 ## 1. 文档职责
 
@@ -270,10 +270,10 @@ R15 没有引入新的 execution kind，但对当前规划有两点补充：
   - 它放在 `workflow.py` 中按表达式逐条执行并分类异常，从而保留 `evaluate_many()` 作为 strict、fail-fast 的核心接口
 
 - [README.md](../README.md)
-- [benchmark.md](benchmark.md)
+- [benchmark.md](benchmark/benchmark.md)
 - [documentation_policy.md](documentation_policy.md)
 - [design.md](design.md)
-- [revolution.md](revolution.md)
+- [revolution.md](history/revolution.md)
 
 ## Current planner state (V6)
 

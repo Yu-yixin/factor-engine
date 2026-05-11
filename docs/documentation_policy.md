@@ -58,13 +58,13 @@
 - 当前执行规划专题
 - `ExecutionProfile`、执行分流、`evaluate_many()`、`PreparedFrame`、缓存配合
 
-### [benchmark.md](benchmark.md)
+### [benchmark.md](benchmark/benchmark.md)
 
 - benchmark 口径
 - benchmark 数据样本、表达式集合、记录格式
 - benchmark 结果的固定落点
 
-### [revolution.md](revolution.md)
+### [revolution.md](history/revolution.md)
 
 - 系统级历史演进
 - 复杂度演进

@@ -192,20 +192,20 @@ write_result(result, "result.parquet")
 
 ## 8. CLI 示例
 
-仓库当前提供示例脚本 [examples/file_batch_workflow.py](../examples/file_batch_workflow.py)。
+仓库当前提供示例脚本 [scripts/workflow/file_batch_workflow.py](../scripts/workflow/file_batch_workflow.py)。
 
 ### 8.1 严格模式
 
 ```powershell
 $env:PYTHONPATH="src"
-py examples/file_batch_workflow.py input.parquet expressions.yaml --output result.parquet
+py scripts/workflow/file_batch_workflow.py input.parquet expressions.yaml --output result.parquet
 ```
 
 ### 8.2 continue-on-error
 
 ```powershell
 $env:PYTHONPATH="src"
-py examples/file_batch_workflow.py input.parquet expressions.yaml --continue-on-error --output result.csv
+py scripts/workflow/file_batch_workflow.py input.parquet expressions.yaml --continue-on-error --output result.csv
 ```
 
 脚本在 `--continue-on-error` 模式下会：

@@ -1,6 +1,6 @@
 # 因子表达式引擎当前设计
 
-本文档只描述 Factor Engine 的当前设计与模块分工，不承担历史演进记录职责。系统的历史变更、阶段性决策与复杂度演进，请参见 [revolution.md](revolution.md)。
+本文档只描述 Factor Engine 的当前设计与模块分工，不承担历史演进记录职责。系统的历史变更、阶段性决策与复杂度演进，请参见 [revolution.md](history/revolution.md)。
 
 文档拆分后的单一来源约定是：
 
@@ -29,11 +29,11 @@
   - 模块分工、核心抽象、扩展入口
 - `docs/execution_planning_optimization.md`
   - 执行规划、批量执行与相关优化专题
-- `docs/benchmark.md`
+- `docs/benchmark/benchmark.md`
   - benchmark 口径与性能记录落点
 - `docs/documentation_policy.md`
   - 文档治理规则与再次优化条件
-- `docs/revolution.md`
+- `docs/history/revolution.md`
   - 历史演进记录与复杂度分析
 
 ## 2. 系统目标
@@ -445,7 +445,7 @@ workflow helper 额外支持：
 
 1. 在 `workflow.py` 设计 helper 入口与失败载荷
 2. 如有必要，在 `errors.py` 增加 workflow 级异常
-3. 在 `tests/test_workflow_*.py` 补文件 schema、错误汇总、写出行为测试
+3. 在 `tests/workflow/test_workflow_*.py` 补文件 schema、错误汇总、写出行为测试
 4. 在 `README` 和 `design` 更新当前工作流说明
 5. 若属于系统级交付，再在 `revolution.md` 追加记录
 
@@ -491,7 +491,7 @@ R15 在当前设计上的直接落点有三类：
   - 这样保持 `FactorEngine` API 和底层表达式异常体系稳定，不把研究流程细节压进核心执行链路
 
 - [README.md](../README.md)
-- [benchmark.md](benchmark.md)
+- [benchmark.md](benchmark/benchmark.md)
 - [documentation_policy.md](documentation_policy.md)
-- [revolution.md](revolution.md)
+- [revolution.md](history/revolution.md)
 - [execution_planning_optimization.md](execution_planning_optimization.md)

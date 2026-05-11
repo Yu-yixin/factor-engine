@@ -97,7 +97,7 @@
 - 执行器如何按需求分流
 - `evaluate_many()` 如何共享执行壳
 
-### 7.1 [execution_planner_v1.md](execution_planner_v1.md)
+### 7.1 [execution_planner_v1.md](history/execution_planner/execution_planner_v1.md)
 
 适合谁看：
 
@@ -109,7 +109,7 @@
 - `planner v1` 支持哪些 route
 - staged materialization 的边界是什么
 
-### 7.2 [execution_planner_v2.md](execution_planner_v2.md)
+### 7.2 [execution_planner_v2.md](history/execution_planner/execution_planner_v2.md)
 
 适合谁看：
 
@@ -121,7 +121,7 @@
 - `planner v2` 如何构建递归 staged chain
 - 深层链式表达式为什么能与手工分步一致
 
-### 7.3 [execution_planner_v3.md](execution_planner_v3.md)
+### 7.3 [execution_planner_v3.md](history/execution_planner/execution_planner_v3.md)
 
 适合谁看：
 
@@ -134,7 +134,7 @@
 - planner-side batch graph 长什么样
 - 当前 batch staged prefix 复用做到哪一步
 
-### 7.4 [execution_planner_v4.md](execution_planner_v4.md)
+### 7.4 [execution_planner_v4.md](history/execution_planner/execution_planner_v4.md)
 
 适合谁看：
 
@@ -147,7 +147,7 @@
 - output binding 如何把 planner 节点映射到最终输出列
 - executor 如何按 planner 节点顺序执行
 
-### 7.5 [execution_planner_v5.md](execution_planner_v5.md)
+### 7.5 [execution_planner_v5.md](history/execution_planner/execution_planner_v5.md)
 
 适合谁看：
 
@@ -174,7 +174,7 @@
 - `cross / grouped / ordered / segmented` 子输入分别怎么处理
 - 当前文档记录的是“已经落地的事实”还是“尚未落地的 closure 目标”
 
-### 8. [benchmark.md](benchmark.md)
+### 8. [benchmark.md](benchmark/benchmark.md)
 
 适合谁看：
 
@@ -186,7 +186,7 @@
 - benchmark 结果落到哪里
 - 如何定义对照与复现
 
-### 9. [revolution.md](revolution.md)
+### 9. [revolution.md](history/revolution.md)
 
 适合谁看：
 
@@ -217,7 +217,7 @@
 1. 先看 [README.md](../README.md)
 2. 再看 [language.md](language.md) 和 [functions.md](functions.md)
 3. 如果关心代码结构，再看 [design.md](design.md)
-4. 如果关心历史与演进，再看 [revolution.md](revolution.md)
+4. 如果关心历史与演进，再看 [revolution.md](history/revolution.md)
 
 ### 路线 B：准备改代码
 
@@ -231,7 +231,7 @@
 ### 路线 C：准备做性能优化
 
 1. 先看 [execution_planning_optimization.md](execution_planning_optimization.md)
-2. 再看 [benchmark.md](benchmark.md)
+2. 再看 [benchmark.md](benchmark/benchmark.md)
 3. 再按 `v1 -> v2 -> v3 -> v4 -> v5 -> v6` 阅读 planner 文档
 4. 如果优化点落在 ordered family，再补读 [ordered_correctness_audit.md](ordered_correctness_audit.md)、[ordered_boundary_rules.md](ordered_boundary_rules.md)、[ordered_roots_matrix.md](ordered_roots_matrix.md)
 5. 最后回到 [design.md](design.md) 看当前代码结构落点
@@ -265,7 +265,7 @@
 - 想知道“怎么从文件批量跑并拿到失败摘要”：看 [workflow.md](workflow.md) 和 [errors.md](errors.md)
 - 想知道“现在怎么设计”：看 [design.md](design.md)
 - 想知道“现在怎么执行”：看 [execution_planning_optimization.md](execution_planning_optimization.md)
-- 想知道“planner 是怎么一步步演进的”：看 [execution_planner_v1.md](execution_planner_v1.md)、[execution_planner_v2.md](execution_planner_v2.md)、[execution_planner_v3.md](execution_planner_v3.md)、[execution_planner_v4.md](execution_planner_v4.md)、[execution_planner_v5.md](execution_planner_v5.md)、[execution_planner_v6.md](execution_planner_v6.md)
+- 想知道“planner 是怎么一步步演进的”：看 [execution_planner_v1.md](history/execution_planner/execution_planner_v1.md)、[execution_planner_v2.md](history/execution_planner/execution_planner_v2.md)、[execution_planner_v3.md](history/execution_planner/execution_planner_v3.md)、[execution_planner_v4.md](history/execution_planner/execution_planner_v4.md)、[execution_planner_v5.md](history/execution_planner/execution_planner_v5.md)、[execution_planner_v6.md](history/execution_planner/execution_planner_v6.md)
 - 想知道“ordered correctness 现在到底保证到哪”：看 [ordered_correctness_audit.md](ordered_correctness_audit.md)、[ordered_boundary_rules.md](ordered_boundary_rules.md)、[ordered_roots_matrix.md](ordered_roots_matrix.md)
-- 想知道“为什么会变成这样”：看 [revolution.md](revolution.md)
+- 想知道“为什么会变成这样”：看 [revolution.md](history/revolution.md)
 - 想知道“什么时候该停、什么时候再优化”：看 [documentation_policy.md](documentation_policy.md)

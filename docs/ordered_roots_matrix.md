@@ -30,7 +30,7 @@ This means the repo can already enforce root-level audit completeness, but per-c
 - Current audited cross/grouped inputs are explicit cross-sectional and grouped cross-sectional expressions such as `rank(...)`, `demean(...)`, `zscore(...)`, `group_rank(...)`, `group_demean(...)`, and `group_zscore(...)`.
 - Current route widening is intentional and still narrow: audited ordered roots may consume `compiled` or `staged` child expressions through a materialization barrier, but this is not a full generalized nested-window optimizer.
 - If a new ordered root is introduced, it should stay out of the main `compiled` path for cross/grouped children until it is added to this matrix, covered by split-step tests, and documented in the boundary rules.
-- Completeness is enforced by test: if a new rolling ordered root is added to the registry without a matching audit entry, `tests/test_ordered_audit.py` must fail.
+- Completeness is enforced by test: if a new rolling ordered root is added to the registry without a matching audit entry, `tests/integration/test_ordered_audit.py` must fail.
 
 ## Current Landed Guardrails
 
