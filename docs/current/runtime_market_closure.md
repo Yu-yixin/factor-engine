@@ -27,3 +27,7 @@ Phase 4.1 Trading-System Adapter
 Goal:
 
 The trading-system should call Runtime API instead of directly calling executor or planner internals.
+
+## Freeze Status
+
+Factor Engine 1.0 Core is frozen. Next work moves to trading-system adapter.

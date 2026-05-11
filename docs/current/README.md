@@ -14,3 +14,6 @@ Recommended reading order:
 4. [dev_setup.md](dev_setup.md)
 5. [cleanup_plan.md](cleanup_plan.md)
 
+## Freeze Status
+
+Factor Engine 1.0 Core is frozen. Next work moves to trading-system adapter.

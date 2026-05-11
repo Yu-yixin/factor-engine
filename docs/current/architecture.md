@@ -55,3 +55,5 @@ The pre-DAG execution path split closure is tracked in [pre_dag_refactor_closure
 The finalized executor coordinator boundary is tracked in [executor_final_architecture.md](executor_final_architecture.md).
 
 Phase 3 is closed. The repository is `READY_FOR_RUNTIME_API`. Further executor changes require a new refactor proposal.
+
+Factor Engine 1.0 Core is frozen. Next work moves to trading-system adapter.
