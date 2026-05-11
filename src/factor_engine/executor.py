@@ -21,6 +21,14 @@ from factor_engine.ast_nodes import (
 from factor_engine.dag import NodeResultStore, NodeResultStoreEntry
 from factor_engine.dag import DagNode, ExpressionDagBuilder
 from factor_engine.errors import ExecutionError
+from factor_engine.executor_utils import (
+    expect_numeric_literal,
+    expect_positive_integer_list_literal,
+    expect_positive_numeric_literal,
+    expect_scalar_number,
+    expect_window_at_least,
+    temporary_helper_name,
+)
 from factor_engine.fourier import fourier_transform_frame
 from factor_engine.lifecycle import (
     FirstWaveCandidateInput,
@@ -879,14 +887,7 @@ class Executor:
         *,
         reserved: set[str] | None = None,
     ) -> str:
-        used_names = set(self.df.columns)
-        if reserved is not None:
-            used_names.update(reserved)
-
-        candidate = base_name
-        while candidate in used_names:
-            candidate = f"_{candidate}"
-        return candidate
+        return temporary_helper_name(base_name, set(self.df.columns), reserved=reserved)
 
     def compile(self, expr: Expr) -> pl.Expr:
         return self._compile_expr(expr)
@@ -4289,63 +4290,23 @@ class Executor:
         return pl.when(condition).then(true_value).otherwise(false_value)
 
     def _expect_numeric_literal(self, expr: Expr, func_name: str) -> int:
-        if not isinstance(expr, NumberNode):
-            raise ExecutionError(
-                f"Function '{func_name}' requires an integer literal window argument"
-            )
-
-        value = expr.value
-        if int(value) != value or value < 0:
-            raise ExecutionError(
-                f"Function '{func_name}' requires a non-negative integer argument"
-            )
-
-        return int(value)
+        return expect_numeric_literal(expr, func_name)
 
     def _expect_scalar_number(self, expr: Expr, func_name: str) -> float:
-        if not isinstance(expr, NumberNode):
-            raise ExecutionError(f"Function '{func_name}' requires a scalar numeric literal")
-        return float(expr.value)
+        return expect_scalar_number(expr, func_name)
 
     def _expect_positive_numeric_literal(self, expr: Expr, func_name: str) -> int:
-        value = self._expect_numeric_literal(expr, func_name)
-        if value <= 0:
-            raise ExecutionError(
-                f"Function '{func_name}' requires a positive integer argument"
-            )
-        return value
+        return expect_positive_numeric_literal(expr, func_name)
 
     def _expect_positive_integer_list_literal(
         self,
         expr: Expr,
         func_name: str,
     ) -> tuple[int, ...]:
-        if not isinstance(expr, ListNode) or not expr.items:
-            raise ExecutionError(
-                f"Function '{func_name}' requires a positive integer literal length list"
-            )
-
-        values: list[int] = []
-        for item in expr.items:
-            if not isinstance(item, NumberNode):
-                raise ExecutionError(
-                    f"Function '{func_name}' requires a positive integer literal length list"
-                )
-
-            value = item.value
-            if int(value) != value or value <= 0:
-                raise ExecutionError(
-                    f"Function '{func_name}' requires a positive integer literal length list"
-                )
-            values.append(int(value))
-
-        return tuple(values)
+        return expect_positive_integer_list_literal(expr, func_name)
 
     def _expect_window_at_least(self, expr: Expr, func_name: str, minimum: int) -> int:
-        window = self._expect_numeric_literal(expr, func_name)
-        if window < minimum:
-            raise ExecutionError(f"Function '{func_name}' requires window >= {minimum}")
-        return window
+        return expect_window_at_least(expr, func_name, minimum)
 
     def _compile_time_series_input(self, expr: Expr) -> pl.Expr:
         return self._compile_expr(expr)

@@ -21,6 +21,7 @@ The main public flow is:
 - `validator.py`: semantic validation and execution profile inference.
 - `planner.py`: route selection and batch planning for compiled, segmented, staged, materialized ordered, positional ordered, and table paths.
 - `executor.py`: execution implementation for the routes planned by `planner.py`, including batch execution, staged/materialized paths, segmented handling, profiling hooks, DAG/CSE execution, lifecycle sweep behavior, and native positional integration points.
+- `executor_utils.py`: low-risk executor utility helpers for internal names and literal validation. This module must stay free of DataFrame execution, route decisions, lifecycle policy, profiling accounting, and native bridge behavior.
 - `registry.py`: function registry and operator/function metadata.
 - `dag.py`: expression DAG identity, DAG building, shared-node handling, and node result store support.
 - `lifecycle.py`: lifecycle mode normalization and candidate classification rules.
@@ -31,7 +32,6 @@ The main public flow is:
 
 ## Current Boundary Notes
 
-`executor.py` is large and carries multiple responsibilities today. That is an observed fact, not an instruction to split it during Phase 1.
+`executor.py` is large and carries multiple responsibilities today. That is an observed fact, not an instruction to rewrite it in one pass.
 
-Phase 1 does not refactor `executor.py`, does not move core source files, and does not change public behavior. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
-
+Phase 3 refactoring must remain incremental. The current first extraction is limited to pure helpers in `executor_utils.py`; public execution behavior still belongs to `executor.py`. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
