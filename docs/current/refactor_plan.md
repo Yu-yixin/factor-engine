@@ -94,7 +94,7 @@ These areas cross many invariants and need narrower tests before extraction.
 ## Proposed Refactor Sequence
 
 1. Phase 3.1: create `src/factor_engine/executor_utils.py` and move pure utility helpers only. Keep `Executor` compatibility wrappers for any private helper already touched by tests. Completed first extraction: temporary helper naming and literal/window validation helpers.
-2. Phase 3.2: isolate profiling/accounting helpers into `execution_profiling.py`, keeping field names and report structures unchanged.
+2. Phase 3.2: isolate profiling/accounting helpers into `execution_profiling.py`, keeping field names and report structures unchanged. Completed first profiling boundary: schema constants plus memory/output/native-buffer/positional detail builders.
 3. Phase 3.3: isolate prepared-frame/order helpers into `execution_ordering.py`, preserving row restoration semantics.
 4. Later: consider lifecycle, segmented, native, and DAG/CSE modules only after targeted tests are stable.
 

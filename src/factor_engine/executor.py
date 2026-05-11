@@ -29,6 +29,12 @@ from factor_engine.executor_utils import (
     expect_window_at_least,
     temporary_helper_name,
 )
+from factor_engine.execution_profiling import (
+    build_memory_event,
+    build_native_buffer_detail,
+    build_output_detail,
+    build_positional_phase_detail,
+)
 from factor_engine.fourier import fourier_transform_frame
 from factor_engine.lifecycle import (
     FirstWaveCandidateInput,
@@ -69,10 +75,7 @@ from factor_engine.planner import (
 )
 from factor_engine.profiling import (
     BatchDetail,
-    MemoryEvent,
-    NativeBufferDetail,
     NodeExecutionDetail,
-    OutputDetail,
     PositionalPhaseDetail,
     StageLifecycleProfiler,
     current_rss_mb,
@@ -327,7 +330,7 @@ class OrderedBatchRuntime:
             if record.attached_to_working_frame and record.output_name in frame_columns
         )
         self.profiler.add_memory_event(
-            MemoryEvent(
+            build_memory_event(
                 event_type=event_type,
                 batch_id=self.batch_id,
                 order_index=order_index,
@@ -592,18 +595,11 @@ class OrderedBatchRuntime:
                 and record.attached_order_index < record.last_required_order_index
             )
             self.profiler.add_output(
-                OutputDetail(
-                    output_name=record.output_name,
+                build_output_detail(
+                    record=record,
                     batch_id=self.batch_id,
-                    created_order_index=record.created_order_index,
-                    attached_order_index=record.attached_order_index,
-                    last_required_order_index=record.last_required_order_index,
                     alive_at_batch_end=True,
                     is_late_alive_output=is_late_alive,
-                    frame_col_count_at_attach=record.frame_col_count_at_attach,
-                    rss_at_attach_mb=record.rss_at_attach_mb,
-                    source_column_name=record.source_column_name,
-                    attached_to_working_frame=record.attached_to_working_frame,
                 )
             )
         native_buffer_release_lag = 0
@@ -624,19 +620,11 @@ class OrderedBatchRuntime:
             if alive_after_attach:
                 native_alive_after_attach += 1
             self.profiler.add_native_buffer(
-                NativeBufferDetail(
-                    buffer_id=record.buffer_id,
+                build_native_buffer_detail(
+                    record=record,
                     batch_id=self.batch_id,
-                    related_output_name=record.related_output_name,
-                    created_order_index=record.created_order_index,
-                    attached_order_index=record.attached_order_index,
-                    released_order_index=record.released_order_index,
-                    bytes_estimate=record.bytes_estimate,
-                    alive_before_attach=record.alive_before_attach,
                     alive_after_attach=alive_after_attach,
                     release_lag_steps=release_lag,
-                    native_parallel_used=record.native_parallel_used,
-                    parallel_worker_count=record.parallel_worker_count,
                 )
             )
         self.profiler.add_batch(
@@ -3415,7 +3403,7 @@ class Executor:
         rss_after = current_rss_mb()
         if runtime is not None:
             runtime.add_positional_phase(
-                PositionalPhaseDetail(
+                build_positional_phase_detail(
                     run_id=runtime.profiler.run_id if runtime.profiler is not None else "",
                     batch_id=runtime.batch_id,
                     expression=expression,

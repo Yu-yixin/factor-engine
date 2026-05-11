@@ -22,6 +22,7 @@ The main public flow is:
 - `planner.py`: route selection and batch planning for compiled, segmented, staged, materialized ordered, positional ordered, and table paths.
 - `executor.py`: execution implementation for the routes planned by `planner.py`, including batch execution, staged/materialized paths, segmented handling, profiling hooks, DAG/CSE execution, lifecycle sweep behavior, and native positional integration points.
 - `executor_utils.py`: low-risk executor utility helpers for internal names and literal validation. This module must stay free of DataFrame execution, route decisions, lifecycle policy, profiling accounting, and native bridge behavior.
+- `execution_profiling.py`: profiling schema constants and small event/detail builders used by executor profiling hooks. This module must not perform DataFrame execution, lifecycle decisions, route dispatch, or benchmark report changes.
 - `registry.py`: function registry and operator/function metadata.
 - `dag.py`: expression DAG identity, DAG building, shared-node handling, and node result store support.
 - `lifecycle.py`: lifecycle mode normalization and candidate classification rules.
@@ -34,4 +35,4 @@ The main public flow is:
 
 `executor.py` is large and carries multiple responsibilities today. That is an observed fact, not an instruction to rewrite it in one pass.
 
-Phase 3 refactoring must remain incremental. The current first extraction is limited to pure helpers in `executor_utils.py`; public execution behavior still belongs to `executor.py`. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
+Phase 3 refactoring must remain incremental. The current extractions are limited to pure helpers in `executor_utils.py` and profiling event/detail builders in `execution_profiling.py`; public execution behavior still belongs to `executor.py`. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
