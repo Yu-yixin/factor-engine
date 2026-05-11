@@ -40,6 +40,10 @@ from factor_engine.execution_ordering import (
     SegmentSpecKey,
     build_prepared_frame,
 )
+from factor_engine.execution_output import (
+    append_ordered_output_columns,
+    restore_selected_columns,
+)
 from factor_engine.fourier import fourier_transform_frame
 from factor_engine.lifecycle import (
     FirstWaveCandidateInput,
@@ -1128,9 +1132,10 @@ class Executor:
     ) -> pl.DataFrame:
         prepared = self._get_prepared_frame()
         sorted_df = prepared.sorted_df.with_columns(compiled.alias(output_name))
-        return (
-            sorted_df.sort(prepared.row_index_name)
-            .drop(prepared.row_index_name)
+        return restore_selected_columns(
+            sorted_df,
+            prepared.row_index_name,
+            [column for column in sorted_df.columns if column != prepared.row_index_name],
         )
 
     def _evaluate_many_row_aligned_no_time_order(
@@ -1163,10 +1168,10 @@ class Executor:
         compiled = self._compile_expr(expr)
         result_df = segmented_df.with_columns(compiled.alias(output_name))
 
-        return (
-            result_df.select([prepared.row_index_name, *self.df.columns, output_name])
-            .sort(prepared.row_index_name)
-            .drop(prepared.row_index_name)
+        return restore_selected_columns(
+            result_df,
+            prepared.row_index_name,
+            [*self.df.columns, output_name],
         )
 
     def _evaluate_many_segmented_columns(
@@ -1190,10 +1195,10 @@ class Executor:
                 self._compile_expr(expr).alias(output_name)
                 for output_name, expr in grouped_items
             ]
-            grouped_result = (
-                segmented_df.select([prepared.row_index_name, *compiled])
-                .sort(prepared.row_index_name)
-                .drop(prepared.row_index_name)
+            grouped_result = restore_selected_columns(
+                segmented_df.select([prepared.row_index_name, *compiled]),
+                prepared.row_index_name,
+                [output_name for output_name, _expr in grouped_items],
             )
             for output_name, _expr in grouped_items:
                 outputs_by_name[output_name] = grouped_result.get_column(output_name)
@@ -1218,10 +1223,10 @@ class Executor:
         if final_stage_name != output_name:
             sorted_df = sorted_df.with_columns(pl.col(final_stage_name).alias(output_name))
 
-        return (
-            sorted_df.select([prepared.row_index_name, *self.df.columns, output_name])
-            .sort(prepared.row_index_name)
-            .drop(prepared.row_index_name)
+        return restore_selected_columns(
+            sorted_df,
+            prepared.row_index_name,
+            [*self.df.columns, output_name],
         )
 
     def _evaluate_many_staged_columns(
@@ -1253,7 +1258,7 @@ class Executor:
         )
         prepared.sorted_df = sorted_df
         ordered_outputs = prepared.restore_output_columns(output_names)
-        return self.df.with_columns([ordered_outputs.get_column(output_name) for output_name in output_names])
+        return append_ordered_output_columns(self.df, ordered_outputs, output_names)
 
     def _plan_ordered_batch_stage_consumers(
         self,
@@ -3171,8 +3176,10 @@ class Executor:
         prepared.sorted_df = sorted_df
         restore_started_at = time.perf_counter()
         if ordered_outputs_with_row is not None:
-            ordered_outputs = ordered_outputs_with_row.sort(prepared.row_index_name).drop(
-                prepared.row_index_name
+            ordered_outputs = restore_selected_columns(
+                ordered_outputs_with_row,
+                prepared.row_index_name,
+                output_names,
             )
         else:
             ordered_outputs = prepared.restore_output_columns(output_names)
@@ -3194,7 +3201,7 @@ class Executor:
             if runtime is not None:
                 runtime.observe_frame(sorted_df)
         append_started_at = time.perf_counter()
-        result = self.df.with_columns([ordered_outputs.get_column(output_name) for output_name in output_names])
+        result = append_ordered_output_columns(self.df, ordered_outputs, output_names)
         if runtime is not None:
             runtime.append_time_ms = (time.perf_counter() - append_started_at) * 1000
             self._record_result_store_profile(
@@ -3237,10 +3244,10 @@ class Executor:
         if final_stage_name != output_name:
             sorted_df = sorted_df.with_columns(pl.col(final_stage_name).alias(output_name))
 
-        return (
-            sorted_df.select([prepared.row_index_name, *self.df.columns, output_name])
-            .sort(prepared.row_index_name)
-            .drop(prepared.row_index_name)
+        return restore_selected_columns(
+            sorted_df,
+            prepared.row_index_name,
+            [*self.df.columns, output_name],
         )
 
     def _evaluate_positional_ordered_column(
@@ -3260,10 +3267,10 @@ class Executor:
         if final_stage_name != output_name:
             sorted_df = sorted_df.with_columns(pl.col(final_stage_name).alias(output_name))
 
-        return (
-            sorted_df.select([prepared.row_index_name, *self.df.columns, output_name])
-            .sort(prepared.row_index_name)
-            .drop(prepared.row_index_name)
+        return restore_selected_columns(
+            sorted_df,
+            prepared.row_index_name,
+            [*self.df.columns, output_name],
         )
 
     def _materialize_positional_call_on_sorted_df(

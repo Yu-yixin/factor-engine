@@ -6,6 +6,10 @@ from collections.abc import Iterable
 import polars as pl
 
 from factor_engine.errors import ExecutionError
+from factor_engine.execution_output import (
+    restore_mapped_output_columns,
+    restore_output_columns,
+)
 
 
 SegmentSpecKey = tuple[str, int | tuple[int, ...]]
@@ -20,25 +24,16 @@ class PreparedFrame:
     segmented_views: dict[SegmentSpecKey, pl.DataFrame]
 
     def restore_output_columns(self, output_names: list[str]) -> pl.DataFrame:
-        return (
-            self.sorted_df.select([self.row_index_name, *output_names])
-            .sort(self.row_index_name)
-            .drop(self.row_index_name)
-        )
+        return restore_output_columns(self.sorted_df, self.row_index_name, output_names)
 
     def restore_mapped_output_columns(
         self,
         output_expressions: list[tuple[str, pl.Expr]],
     ) -> pl.DataFrame:
-        return (
-            self.sorted_df.select(
-                [
-                    self.row_index_name,
-                    *[expr.alias(output_name) for output_name, expr in output_expressions],
-                ]
-            )
-            .sort(self.row_index_name)
-            .drop(self.row_index_name)
+        return restore_mapped_output_columns(
+            self.sorted_df,
+            self.row_index_name,
+            output_expressions,
         )
 
 
