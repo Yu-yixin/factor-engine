@@ -112,7 +112,7 @@ V3 现在会显式生成 batch 级执行计划，而不只是让 executor 在运
 
 ### planner
 
-- [src/factor_engine/planner.py](../src/factor_engine/planner.py)
+- [src/factor_engine/planner.py](../../../src/factor_engine/planner.py)
 
 负责：
 
@@ -125,7 +125,7 @@ V3 现在会显式生成 batch 级执行计划，而不只是让 executor 在运
 
 ### engine
 
-- [src/factor_engine/engine.py](../src/factor_engine/engine.py)
+- [src/factor_engine/engine.py](../../../src/factor_engine/engine.py)
 
 负责：
 
@@ -135,7 +135,7 @@ V3 现在会显式生成 batch 级执行计划，而不只是让 executor 在运
 
 ### executor
 
-- [src/factor_engine/executor.py](../src/factor_engine/executor.py)
+- [src/factor_engine/executor.py](../../../src/factor_engine/executor.py)
 
 负责：
 

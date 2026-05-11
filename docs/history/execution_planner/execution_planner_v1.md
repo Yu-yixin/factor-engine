@@ -137,7 +137,7 @@ V1 当前支持的 staged 外层函数：
 
 V1 规划逻辑收敛在：
 
-- [src/factor_engine/planner.py](../src/factor_engine/planner.py)
+- [src/factor_engine/planner.py](../../../src/factor_engine/planner.py)
 
 核心对象：
 

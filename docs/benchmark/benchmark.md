@@ -201,8 +201,8 @@ R15 引入了三类新的 benchmark 候选面，但当前还没有正式 benchma
   - 只有当这些 helper 进入真实日常工作流主路径时，才值得形成正式 benchmark 报告
 
 - [README.md](../README.md)
-- [index.md](index.md)
-- [documentation_policy.md](documentation_policy.md)
+- [index.md](../index.md)
+- [documentation_policy.md](../documentation_policy.md)
 - [revolution.md](../history/revolution.md)
 
 ## 8.3 Stage Lifecycle Benchmark
@@ -233,7 +233,7 @@ Stage lifecycle validation now also includes:
 - real minute parquet smoke: `python examples\benchmark_stage_lifecycle_real_smoke.py --data data\minute_2026_03.parquet --rows 500000 --code-col ths_code`
 - positional phase profiler: `python examples\benchmark_positional_phases.py --data data\minute_2026_03.parquet --rows 500000 --expr-counts 1,8,16,20 --code-col ths_code`
 - real smoke report: `benchmarks/latest/stage_lifecycle_real_smoke/real_smoke_report.md`
-- native positional kernel notes: [docs/native_positional_kernel.md](native_positional_kernel.md)
+- native positional kernel notes: [docs/native_positional_kernel.md](../native_positional_kernel.md)
 
 The synthetic benchmark is a regression gate for structure metrics, not a wall-clock-only test. V2 must not worsen `peak_frame_col_count` or `peak_live_stage_count_estimate`, and it must reduce or eliminate `alive_stage_at_batch_end_count`.
 
