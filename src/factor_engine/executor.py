@@ -35,6 +35,11 @@ from factor_engine.execution_profiling import (
     build_output_detail,
     build_positional_phase_detail,
 )
+from factor_engine.execution_ordering import (
+    PreparedFrame,
+    SegmentSpecKey,
+    build_prepared_frame,
+)
 from factor_engine.fourier import fourier_transform_frame
 from factor_engine.lifecycle import (
     FirstWaveCandidateInput,
@@ -87,41 +92,9 @@ from factor_engine.stage_registry import StageRegistry
 from factor_engine.validator import ExecutionProfile, ValidationResult
 
 
-SegmentSpecKey = tuple[str, int | tuple[int, ...]]
 # Root argmax/argmin calls use the dedicated grouped kernel. This threshold only
 # applies to the legacy expression fallback used inside compiled compositions.
 SHORT_WINDOW_THRESHOLD = 8
-
-
-@dataclass
-class PreparedFrame:
-    # PreparedFrame is an internal optimization helper for ordered time-series work.
-    original_df: pl.DataFrame
-    sorted_df: pl.DataFrame
-    row_index_name: str
-    segmented_views: dict[SegmentSpecKey, pl.DataFrame]
-
-    def restore_output_columns(self, output_names: list[str]) -> pl.DataFrame:
-        return (
-            self.sorted_df.select([self.row_index_name, *output_names])
-            .sort(self.row_index_name)
-            .drop(self.row_index_name)
-        )
-
-    def restore_mapped_output_columns(
-        self,
-        output_expressions: list[tuple[str, pl.Expr]],
-    ) -> pl.DataFrame:
-        return (
-            self.sorted_df.select(
-                [
-                    self.row_index_name,
-                    *[expr.alias(output_name) for output_name, expr in output_expressions],
-                ]
-            )
-            .sort(self.row_index_name)
-            .drop(self.row_index_name)
-        )
 
 
 @dataclass
@@ -3850,25 +3823,11 @@ class Executor:
         return sorted_df, current_stage_name, stage_cache
 
     def _get_prepared_frame(self) -> PreparedFrame:
-        if self.time_col not in self.df.columns or self.code_col not in self.df.columns:
-            raise ExecutionError(
-                f"Ordered time-series execution requires columns: {self.code_col}, {self.time_col}"
-            )
-
         if self._prepared_frame is None:
-            row_index_name = "__row_idx"
-            while row_index_name in self.df.columns:
-                row_index_name = f"_{row_index_name}"
-
-            sorted_df = (
-                self.df.with_row_index(row_index_name)
-                .sort([self.code_col, self.time_col])
-            )
-            self._prepared_frame = PreparedFrame(
-                original_df=self.df,
-                sorted_df=sorted_df,
-                row_index_name=row_index_name,
-                segmented_views={},
+            self._prepared_frame = build_prepared_frame(
+                self.df,
+                code_col=self.code_col,
+                time_col=self.time_col,
             )
 
         return self._prepared_frame
