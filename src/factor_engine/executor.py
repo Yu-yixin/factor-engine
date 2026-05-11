@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Execution coordinator for planned factor expressions.
+
+The route-specific execution shells live in `execution_*.py` modules. This
+module keeps public evaluate/evaluate_many orchestration, compatibility
+wrappers, planner handoff, and the still-coupled ordered batch coordinator.
+"""
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 import time

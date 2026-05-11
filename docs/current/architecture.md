@@ -51,3 +51,5 @@ Phase 3 refactoring must remain incremental. The current extractions include pur
 The next execution-path split readiness gate is tracked in [execution_path_split_readiness.md](execution_path_split_readiness.md).
 
 The pre-DAG execution path split closure is tracked in [pre_dag_refactor_closure.md](pre_dag_refactor_closure.md).
+
+The finalized executor coordinator boundary is tracked in [executor_final_architecture.md](executor_final_architecture.md).

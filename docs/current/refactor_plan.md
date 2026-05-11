@@ -149,3 +149,5 @@ Phase 3.12 isolates the shared-node CSE materialization shell in `execution_cse.
 Phase 3.13 isolates materialization boundary helpers in `execution_materialization.py`, including materialized consumer-count policy and recomputation guardrail runtime summaries. Planner route and materialized ordered semantics remain unchanged.
 
 Phase 3.14 isolates executor lifecycle integration helpers in `execution_lifecycle.py`, while keeping lifecycle policy in `lifecycle.py` and preserving drop semantics.
+
+Phase 3.15 finalizes the executor coordinator boundary in [executor_final_architecture.md](executor_final_architecture.md). `executor.py` remains the public execution coordinator and compatibility facade; execution modules own route-specific shells and helper boundaries.
