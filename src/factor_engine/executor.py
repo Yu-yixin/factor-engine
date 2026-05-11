@@ -27,6 +27,7 @@ from factor_engine.execution_dag import (
     merge_node_hit_counts,
     rewrite_expr_with_materialized_nodes,
 )
+from factor_engine.execution_cse import materialize_shared_dag_nodes_on_sorted_df
 from factor_engine.errors import ExecutionError
 from factor_engine.executor_utils import (
     expect_numeric_literal,
@@ -1417,114 +1418,23 @@ class Executor:
         lifecycle_plans_by_node_id: dict[str, object],
         runtime: OrderedBatchRuntime | None,
     ) -> tuple[pl.DataFrame, dict[tuple, str]]:
-        for node in dag_nodes:
-            if not node.materialize or node.identity in materialized_column_by_identity:
-                continue
-            lifecycle_plan = lifecycle_plans_by_node_id.get(node.node_id)
-            producer_step = (
-                getattr(lifecycle_plan, "producer_step", None)
-                if lifecycle_plan is not None
-                else None
-            )
-
-            rewritten_expr, child_hits = self._rewrite_expr_with_materialized_nodes(
-                node.expr,
-                materialized_column_by_identity=materialized_column_by_identity,
-                dag_nodes_by_identity=dag_nodes_by_identity,
-                skip_identity=node.identity,
-            )
-            for node_id, count in child_hits.items():
-                result_store.record_reads(
-                    node_id,
-                    read_count=count,
-                    consumer_count=1,
-                    read_step=producer_step,
-                )
-                result_store.record_planned_consumption(
-                    node_id,
-                    step=producer_step,
-                    multiplicity=count,
-                    active_drop_enabled=is_lifecycle_active(self.lifecycle_mode),
-                )
-
-            stage_name = self._temporary_helper_name("__dag_node", reserved=reserved_names)
-            compute_started_at = time.perf_counter()
-            sorted_df = sorted_df.with_columns(self._compile_expr(rewritten_expr).alias(stage_name))
-            compute_time_ms = (time.perf_counter() - compute_started_at) * 1000
-            bytes_estimate = 0
-            try:
-                bytes_estimate = int(sorted_df.get_column(stage_name).estimated_size())
-            except Exception:
-                bytes_estimate = 0
-            store_started_at = time.perf_counter()
-            reserved_names.add(stage_name)
-            materialized_column_by_identity[node.identity] = stage_name
-            stage_cache[("dag_node", node.node_id)] = stage_name
-            result_store.put_materialized(
-                NodeResultStoreEntry(
-                    node_id=node.node_id,
-                    identity=node.identity,
-                    materialization_kind=node.materialization_kind,
-                    materialization_reason=node.materialization_reason,
-                    materialization_eligibility=node.materialization_eligibility,
-                    column_name=stage_name,
-                ),
-                compute_time_ms=compute_time_ms,
-                store_write_time_ms=(time.perf_counter() - store_started_at) * 1000,
-                materialized_at_step=(
-                    getattr(lifecycle_plan, "producer_step", None)
-                    if lifecycle_plan is not None
-                    else None
-                ),
-                theoretical_release_step=(
-                    getattr(lifecycle_plan, "last_use_step", None)
-                    if lifecycle_plan is not None
-                    else None
-                ),
-                bytes_estimate=bytes_estimate,
-                ref_count_initial=(
-                    getattr(lifecycle_plan, "ref_count_initial", 0)
-                    if lifecycle_plan is not None
-                    else 0
-                ),
-                active_drop_eligible=(
-                    is_lifecycle_active(self.lifecycle_mode)
-                    and self.dag_cse_enabled
-                    and is_first_wave_candidate(
-                        FirstWaveCandidateInput(
-                            materialization_eligibility=node.materialization_eligibility,
-                            drop_candidate=(
-                                getattr(lifecycle_plan, "drop_candidate", False)
-                                if lifecycle_plan is not None
-                                else False
-                            ),
-                            drop_blocker_reason=(
-                                getattr(lifecycle_plan, "drop_blocker_reason", "")
-                                if lifecycle_plan is not None
-                                else "missing_lifecycle_plan"
-                            ),
-                            structural_release_lag_steps=(
-                                getattr(lifecycle_plan, "structural_release_lag_steps", 0)
-                                if lifecycle_plan is not None
-                                else 0
-                            ),
-                            node_lifecycle_class=self._node_lifecycle_class(node.identity),
-                            bytes_estimate=bytes_estimate,
-                        )
-                    )
-                ),
-            )
-            if runtime is not None:
-                runtime.register_stage(
-                    expr_key=("dag_node", node.node_id),
-                    column_name=stage_name,
-                    stage_kind="dag_shared_intermediate",
-                    producer_route="dag_cse",
-                    frame=sorted_df,
-                    cache_key=("dag_node", node.node_id),
-                )
-
-        return sorted_df, stage_cache
+        return materialize_shared_dag_nodes_on_sorted_df(
+            sorted_df,
+            dag_nodes=dag_nodes,
+            reserved_names=reserved_names,
+            stage_cache=stage_cache,
+            result_store=result_store,
+            materialized_column_by_identity=materialized_column_by_identity,
+            dag_nodes_by_identity=dag_nodes_by_identity,
+            lifecycle_plans_by_node_id=lifecycle_plans_by_node_id,
+            runtime=runtime,
+            lifecycle_active=is_lifecycle_active(self.lifecycle_mode),
+            dag_cse_enabled=self.dag_cse_enabled,
+            rewrite_expr_with_materialized_nodes=self._rewrite_expr_with_materialized_nodes,
+            compile_expr=self._compile_expr,
+            temporary_helper_name=self._temporary_helper_name,
+            node_lifecycle_class=self._node_lifecycle_class,
+        )
 
     def _materialized_helper_has_nested_dependency(
         self,

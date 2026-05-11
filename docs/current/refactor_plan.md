@@ -143,3 +143,5 @@ The pre-DAG execution path split is closed in [pre_dag_refactor_closure.md](pre_
 ## DAG/CSE Core Split
 
 Phase 3.10 mapped the DAG/CSE refactor plan in [dag_cse_refactor_plan.md](dag_cse_refactor_plan.md). Phase 3.11 begins the core split with `execution_dag.py` for DAG identity, materialized-node rewrite/count helpers, planned consumer counters, and DAG execution context initialization.
+
+Phase 3.12 isolates the shared-node CSE materialization shell in `execution_cse.py`, while keeping expression compilation, lifecycle classification, and stage registration behind executor callbacks.
