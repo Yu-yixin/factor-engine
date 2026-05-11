@@ -18,7 +18,15 @@ from factor_engine.ast_nodes import (
     VariableNode,
 )
 from factor_engine.dag import NodeResultStore, NodeResultStoreEntry
-from factor_engine.dag import DagNode, ExpressionDagBuilder
+from factor_engine.dag import DagNode
+from factor_engine.execution_dag import (
+    count_materializable_node_occurrences,
+    dag_identity_for_expr,
+    increment_planned_consumer,
+    initialize_dag_execution_context,
+    merge_node_hit_counts,
+    rewrite_expr_with_materialized_nodes,
+)
 from factor_engine.errors import ExecutionError
 from factor_engine.executor_utils import (
     expect_numeric_literal,
@@ -1306,8 +1314,7 @@ class Executor:
 
     @staticmethod
     def _increment_planned_consumer(planned: dict[tuple, int], cache_key: tuple | None) -> None:
-        if cache_key is not None:
-            planned[cache_key] = planned.get(cache_key, 0) + 1
+        increment_planned_consumer(planned, cache_key)
 
     def _explicit_stage_cache_key(self, expr: Expr) -> tuple | None:
         profile = self._infer_execution_profile(expr)
@@ -1352,17 +1359,15 @@ class Executor:
         return None
 
     def _dag_identity_for_expr(self, expr: Expr) -> tuple:
-        dag = ExpressionDagBuilder(time_col=self.time_col, code_col=self.code_col).build(
-            [("__value__", expr)],
+        return dag_identity_for_expr(
+            expr,
+            time_col=self.time_col,
+            code_col=self.code_col,
             materialization_threshold_mode=self.materialization_threshold_mode,
-            recomputation_guardrail_max_expansion=(
-                self.recomputation_guardrail_max_expansion
-            ),
+            recomputation_guardrail_max_expansion=self.recomputation_guardrail_max_expansion,
             planner_cse_mode=self.planner_cse_mode,
             fusion_mode=self.fusion_mode,
         )
-        nodes_by_id = dag.node_by_id()
-        return nodes_by_id[dag.output_node_ids[0]].identity
 
     def _rewrite_expr_with_materialized_nodes(
         self,
@@ -1372,83 +1377,17 @@ class Executor:
         dag_nodes_by_identity: dict[tuple, DagNode],
         skip_identity: tuple | None = None,
     ) -> tuple[Expr, dict[str, int]]:
-        identity = self._dag_identity_for_expr(expr)
-        if identity != skip_identity and identity in materialized_column_by_identity:
-            node = dag_nodes_by_identity[identity]
-            return VariableNode(materialized_column_by_identity[identity]), {node.node_id: 1}
-
-        if isinstance(expr, (NumberNode, BooleanNode, VariableNode)):
-            return expr, {}
-
-        if isinstance(expr, ListNode):
-            items: list[Expr] = []
-            hits: dict[str, int] = {}
-            for item in expr.items:
-                rewritten, child_hits = self._rewrite_expr_with_materialized_nodes(
-                    item,
-                    materialized_column_by_identity=materialized_column_by_identity,
-                    dag_nodes_by_identity=dag_nodes_by_identity,
-                    skip_identity=skip_identity,
-                )
-                items.append(rewritten)
-                self._merge_node_hit_counts(hits, child_hits)
-            return ListNode(items), hits
-
-        if isinstance(expr, UnaryOpNode):
-            operand, hits = self._rewrite_expr_with_materialized_nodes(
-                expr.operand,
-                materialized_column_by_identity=materialized_column_by_identity,
-                dag_nodes_by_identity=dag_nodes_by_identity,
-                skip_identity=skip_identity,
-            )
-            return UnaryOpNode(expr.operator, operand), hits
-
-        if isinstance(expr, BinaryOpNode):
-            left, hits = self._rewrite_expr_with_materialized_nodes(
-                expr.left,
-                materialized_column_by_identity=materialized_column_by_identity,
-                dag_nodes_by_identity=dag_nodes_by_identity,
-                skip_identity=skip_identity,
-            )
-            right, right_hits = self._rewrite_expr_with_materialized_nodes(
-                expr.right,
-                materialized_column_by_identity=materialized_column_by_identity,
-                dag_nodes_by_identity=dag_nodes_by_identity,
-                skip_identity=skip_identity,
-            )
-            self._merge_node_hit_counts(hits, right_hits)
-            return BinaryOpNode(left, expr.operator, right), hits
-
-        if isinstance(expr, CallNode):
-            args: list[Expr] = []
-            hits: dict[str, int] = {}
-            for arg in expr.args:
-                rewritten, child_hits = self._rewrite_expr_with_materialized_nodes(
-                    arg,
-                    materialized_column_by_identity=materialized_column_by_identity,
-                    dag_nodes_by_identity=dag_nodes_by_identity,
-                    skip_identity=skip_identity,
-                )
-                args.append(rewritten)
-                self._merge_node_hit_counts(hits, child_hits)
-            kwargs: dict[str, Expr] = {}
-            for key, value in expr.kwargs.items():
-                rewritten, child_hits = self._rewrite_expr_with_materialized_nodes(
-                    value,
-                    materialized_column_by_identity=materialized_column_by_identity,
-                    dag_nodes_by_identity=dag_nodes_by_identity,
-                    skip_identity=skip_identity,
-                )
-                kwargs[key] = rewritten
-                self._merge_node_hit_counts(hits, child_hits)
-            return CallNode(expr.name, args, kwargs), hits
-
-        raise ExecutionError(f"Unsupported AST node for DAG rewrite: {type(expr).__name__}")
+        return rewrite_expr_with_materialized_nodes(
+            expr,
+            materialized_column_by_identity=materialized_column_by_identity,
+            dag_nodes_by_identity=dag_nodes_by_identity,
+            identity_for_expr=self._dag_identity_for_expr,
+            skip_identity=skip_identity,
+        )
 
     @staticmethod
     def _merge_node_hit_counts(target: dict[str, int], source: dict[str, int]) -> None:
-        for node_id, count in source.items():
-            target[node_id] = target.get(node_id, 0) + count
+        merge_node_hit_counts(target, source)
 
     def _count_materializable_node_occurrences(
         self,
@@ -1457,65 +1396,13 @@ class Executor:
         dag_nodes_by_identity: dict[tuple, DagNode],
         node_lifecycle_class: str | None = None,
     ) -> int:
-        identity = self._dag_identity_for_expr(expr)
-        node = dag_nodes_by_identity.get(identity)
-        if node is not None and node.materialize:
-            if node_lifecycle_class is None:
-                return 1
-            return 1 if self._node_lifecycle_class(node.identity) == node_lifecycle_class else 0
-
-        if isinstance(expr, (NumberNode, BooleanNode, VariableNode)):
-            return 0
-
-        if isinstance(expr, ListNode):
-            return sum(
-                self._count_materializable_node_occurrences(
-                    item,
-                    dag_nodes_by_identity=dag_nodes_by_identity,
-                    node_lifecycle_class=node_lifecycle_class,
-                )
-                for item in expr.items
-            )
-
-        if isinstance(expr, UnaryOpNode):
-            return self._count_materializable_node_occurrences(
-                expr.operand,
-                dag_nodes_by_identity=dag_nodes_by_identity,
-                node_lifecycle_class=node_lifecycle_class,
-            )
-
-        if isinstance(expr, BinaryOpNode):
-            return (
-                self._count_materializable_node_occurrences(
-                    expr.left,
-                    dag_nodes_by_identity=dag_nodes_by_identity,
-                    node_lifecycle_class=node_lifecycle_class,
-                )
-                + self._count_materializable_node_occurrences(
-                    expr.right,
-                    dag_nodes_by_identity=dag_nodes_by_identity,
-                    node_lifecycle_class=node_lifecycle_class,
-                )
-            )
-
-        if isinstance(expr, CallNode):
-            return sum(
-                self._count_materializable_node_occurrences(
-                    arg,
-                    dag_nodes_by_identity=dag_nodes_by_identity,
-                    node_lifecycle_class=node_lifecycle_class,
-                )
-                for arg in expr.args
-            ) + sum(
-                self._count_materializable_node_occurrences(
-                    value,
-                    dag_nodes_by_identity=dag_nodes_by_identity,
-                    node_lifecycle_class=node_lifecycle_class,
-                )
-                for value in expr.kwargs.values()
-            )
-
-        raise ExecutionError(f"Unsupported AST node for DAG occurrence count: {type(expr).__name__}")
+        return count_materializable_node_occurrences(
+            expr,
+            dag_nodes_by_identity=dag_nodes_by_identity,
+            identity_for_expr=self._dag_identity_for_expr,
+            node_lifecycle_class_for_identity=self._node_lifecycle_class,
+            node_lifecycle_class=node_lifecycle_class,
+        )
 
     def _materialize_shared_dag_nodes_on_sorted_df(
         self,
@@ -2747,36 +2634,14 @@ class Executor:
         output_names: list[str] = []
         output_expressions: list[tuple[str, pl.Expr]] = []
         output_source_columns: set[str] = set()
-        result_store = NodeResultStore()
-        dag_nodes_by_output: dict[str, str] = {}
-        dag_identity_by_node_id: dict[str, tuple] = {}
-        dag_nodes_by_identity: dict[tuple, DagNode] = {}
-        lifecycle_plans_by_node_id: dict[str, object] = {}
-        lifecycle_read_cursor_by_node_id: dict[str, int] = {}
-        materialized_column_by_identity: dict[tuple, str] = {}
-        if batch_plan.dag is not None:
-            lifecycle_plans_by_node_id = batch_plan.dag.lifecycle_plan_by_node_id()
-            for node in batch_plan.dag.nodes:
-                dag_nodes_by_identity[node.identity] = node
-                dag_identity_by_node_id[node.node_id] = node.identity
-                for output_name in node.output_names:
-                    dag_nodes_by_output[output_name] = node.node_id
-                if node.materialize:
-                    result_store.register_policy(
-                        node_id=node.node_id,
-                        identity=node.identity,
-                        materialization_kind=node.materialization_kind,
-                        consumer_count=max(
-                            node.occurrence_count,
-                            len(node.consumers) + len(node.output_names),
-                        ),
-                        materialization_reason=node.materialization_reason,
-                        materialization_eligibility=node.materialization_eligibility,
-                        recomputation_expansion_if_inline=(
-                            node.recomputation_expansion_if_inline
-                        ),
-                        recomputation_guardrail_pass=node.recomputation_guardrail_pass,
-                    )
+        dag_context = initialize_dag_execution_context(batch_plan.dag)
+        result_store = dag_context.result_store
+        dag_nodes_by_output = dag_context.dag_nodes_by_output
+        dag_identity_by_node_id = dag_context.dag_identity_by_node_id
+        dag_nodes_by_identity = dag_context.dag_nodes_by_identity
+        lifecycle_plans_by_node_id = dag_context.lifecycle_plans_by_node_id
+        lifecycle_read_cursor_by_node_id = dag_context.lifecycle_read_cursor_by_node_id
+        materialized_column_by_identity = dag_context.materialized_column_by_identity
         planned_stage_consumers = self._plan_ordered_batch_stage_consumers(batch_plan)
         runtime: OrderedBatchRuntime | None = None
         if (

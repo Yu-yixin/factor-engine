@@ -139,3 +139,7 @@ The current readiness gate for the next phase is tracked in [execution_path_spli
 ## Pre-DAG Closure
 
 The pre-DAG execution path split is closed in [pre_dag_refactor_closure.md](pre_dag_refactor_closure.md). DAG/CSE batch reuse, lifecycle deep drop, materialization candidate planning, node store / consumer count, and executor-native reuse remain intentionally unsplit.
+
+## DAG/CSE Core Split
+
+Phase 3.10 mapped the DAG/CSE refactor plan in [dag_cse_refactor_plan.md](dag_cse_refactor_plan.md). Phase 3.11 begins the core split with `execution_dag.py` for DAG identity, materialized-node rewrite/count helpers, planned consumer counters, and DAG execution context initialization.
