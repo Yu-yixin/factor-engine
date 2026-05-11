@@ -99,7 +99,8 @@ These areas cross many invariants and need narrower tests before extraction.
 4. Phase 3.3B: isolate output assembly shell helpers into `execution_output.py`, preserving final column order, output names, and helper-column filtering. Completed output boundary: restore/select helpers and ordered-output append helpers.
 5. Phase 3.4: isolate no-order row-aligned compiled helpers into `execution_row_aligned.py`, preserving simple `with_columns` behavior and output order.
 6. Phase 3.5: isolate ordered row-aligned compiled helpers into `execution_ordered.py`, preserving prepared-frame usage and original-order restoration.
-7. Later: consider lifecycle, segmented, native, and DAG/CSE modules only after targeted tests are stable.
+7. Phase 3.6: isolate staged/materialized ordered orchestration shells into `execution_materialized.py`, while leaving nested materialization internals in executor-owned callbacks.
+8. Later: consider lifecycle, segmented, native, and DAG/CSE modules only after targeted tests are stable.
 
 ## Test Guardrails
 

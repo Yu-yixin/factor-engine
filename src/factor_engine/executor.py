@@ -44,6 +44,11 @@ from factor_engine.execution_ordered import (
     evaluate_many_row_aligned_time_ordered,
     evaluate_row_aligned_time_ordered,
 )
+from factor_engine.execution_materialized import (
+    evaluate_many_staged_columns,
+    evaluate_materialized_ordered_column,
+    evaluate_staged_column,
+)
 from factor_engine.execution_output import (
     append_ordered_output_columns,
     restore_selected_columns,
@@ -1218,21 +1223,16 @@ class Executor:
         output_name: str,
     ) -> pl.DataFrame:
         prepared = self._get_prepared_frame()
-        sorted_df = prepared.sorted_df
-        reserved_names = set(sorted_df.columns)
-        sorted_df, final_stage_name, _stage_cache = self._materialize_staged_chain_on_sorted_df(
-            sorted_df,
-            staged_plan=staged_plan,
-            reserved_names=reserved_names,
-            stage_cache={},
-        )
-        if final_stage_name != output_name:
-            sorted_df = sorted_df.with_columns(pl.col(final_stage_name).alias(output_name))
-
-        return restore_selected_columns(
-            sorted_df,
-            prepared.row_index_name,
-            [*self.df.columns, output_name],
+        return evaluate_staged_column(
+            prepared,
+            self.df,
+            output_name=output_name,
+            materialize_staged_chain=lambda sorted_df: self._materialize_staged_chain_on_sorted_df(
+                sorted_df,
+                staged_plan=staged_plan,
+                reserved_names=set(sorted_df.columns),
+                stage_cache={},
+            ),
         )
 
     def _evaluate_many_staged_columns(
@@ -1243,28 +1243,21 @@ class Executor:
             return self.df
 
         prepared = self._get_prepared_frame()
-        sorted_df = prepared.sorted_df
-        reserved_names = set(sorted_df.columns)
-        output_names: list[str] = []
-        stage_cache: dict[tuple, str] = {}
-        output_stage_names: dict[str, str] = {}
-
-        for output_name, staged_plan in items:
-            sorted_df, final_stage_name, stage_cache = self._materialize_staged_chain_on_sorted_df(
-                sorted_df,
-                staged_plan=staged_plan,
-                reserved_names=reserved_names,
-                stage_cache=stage_cache,
-            )
-            output_stage_names[output_name] = final_stage_name
-            output_names.append(output_name)
-
-        sorted_df = sorted_df.with_columns(
-            [pl.col(output_stage_names[output_name]).alias(output_name) for output_name in output_names]
+        return evaluate_many_staged_columns(
+            prepared,
+            self.df,
+            items,
+            materialize_staged_chain=(
+                lambda sorted_df, staged_plan, reserved_names, stage_cache: (
+                    self._materialize_staged_chain_on_sorted_df(
+                        sorted_df,
+                        staged_plan=staged_plan,
+                        reserved_names=reserved_names,
+                        stage_cache=stage_cache,
+                    )
+                )
+            ),
         )
-        prepared.sorted_df = sorted_df
-        ordered_outputs = prepared.restore_output_columns(output_names)
-        return append_ordered_output_columns(self.df, ordered_outputs, output_names)
 
     def _plan_ordered_batch_stage_consumers(
         self,
@@ -3240,20 +3233,16 @@ class Executor:
         output_name: str,
     ) -> pl.DataFrame:
         prepared = self._get_prepared_frame()
-        reserved_names = set(prepared.sorted_df.columns)
-        sorted_df, final_stage_name, _stage_cache = self._materialize_ordered_plan_on_sorted_df(
-            prepared.sorted_df,
-            materialized_plan=materialized_plan,
-            reserved_names=reserved_names,
-            stage_cache={},
-        )
-        if final_stage_name != output_name:
-            sorted_df = sorted_df.with_columns(pl.col(final_stage_name).alias(output_name))
-
-        return restore_selected_columns(
-            sorted_df,
-            prepared.row_index_name,
-            [*self.df.columns, output_name],
+        return evaluate_materialized_ordered_column(
+            prepared,
+            self.df,
+            output_name=output_name,
+            materialize_ordered_plan=lambda sorted_df: self._materialize_ordered_plan_on_sorted_df(
+                sorted_df,
+                materialized_plan=materialized_plan,
+                reserved_names=set(sorted_df.columns),
+                stage_cache={},
+            ),
         )
 
     def _evaluate_positional_ordered_column(
