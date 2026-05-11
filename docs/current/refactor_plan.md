@@ -147,3 +147,5 @@ Phase 3.10 mapped the DAG/CSE refactor plan in [dag_cse_refactor_plan.md](dag_cs
 Phase 3.12 isolates the shared-node CSE materialization shell in `execution_cse.py`, while keeping expression compilation, lifecycle classification, and stage registration behind executor callbacks.
 
 Phase 3.13 isolates materialization boundary helpers in `execution_materialization.py`, including materialized consumer-count policy and recomputation guardrail runtime summaries. Planner route and materialized ordered semantics remain unchanged.
+
+Phase 3.14 isolates executor lifecycle integration helpers in `execution_lifecycle.py`, while keeping lifecycle policy in `lifecycle.py` and preserving drop semantics.
