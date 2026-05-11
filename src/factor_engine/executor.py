@@ -57,6 +57,15 @@ from factor_engine.execution_row_aligned import (
     evaluate_many_row_aligned_no_time_order,
     evaluate_row_aligned_no_time_order,
 )
+from factor_engine.execution_segmented import (
+    build_equal_segment_id_expr,
+    build_length_segment_id_expr,
+    ensure_segment_lengths_cover_groups,
+    evaluate_many_segmented_columns,
+    evaluate_segmented_column,
+    get_segmented_view,
+    prepare_segmented_sorted_df,
+)
 from factor_engine.fourier import fourier_transform_frame
 from factor_engine.lifecycle import (
     FirstWaveCandidateInput,
@@ -1174,15 +1183,14 @@ class Executor:
         output_name: str,
     ) -> pl.DataFrame:
         prepared = self._get_prepared_frame()
-        segment_spec_key = self._get_segment_spec_key(expr)
-        segmented_df = self._get_segmented_view(segment_spec_key)
-        compiled = self._compile_expr(expr)
-        result_df = segmented_df.with_columns(compiled.alias(output_name))
-
-        return restore_selected_columns(
-            result_df,
-            prepared.row_index_name,
-            [*self.df.columns, output_name],
+        return evaluate_segmented_column(
+            prepared,
+            self.df,
+            expr,
+            output_name=output_name,
+            get_segment_spec_key=self._get_segment_spec_key,
+            get_segmented_view_for_key=self._get_segmented_view,
+            compile_expr=self._compile_expr,
         )
 
     def _evaluate_many_segmented_columns(
@@ -1193,28 +1201,14 @@ class Executor:
             return self.df
 
         prepared = self._get_prepared_frame()
-        outputs_by_name: dict[str, pl.Series] = {}
-        items_by_segment_spec: dict[SegmentSpecKey, list[tuple[str, Expr]]] = {}
-
-        for output_name, expr, _validation in items:
-            segment_spec_key = self._get_segment_spec_key(expr)
-            items_by_segment_spec.setdefault(segment_spec_key, []).append((output_name, expr))
-
-        for segment_spec_key, grouped_items in items_by_segment_spec.items():
-            segmented_df = self._get_segmented_view(segment_spec_key)
-            compiled = [
-                self._compile_expr(expr).alias(output_name)
-                for output_name, expr in grouped_items
-            ]
-            grouped_result = restore_selected_columns(
-                segmented_df.select([prepared.row_index_name, *compiled]),
-                prepared.row_index_name,
-                [output_name for output_name, _expr in grouped_items],
-            )
-            for output_name, _expr in grouped_items:
-                outputs_by_name[output_name] = grouped_result.get_column(output_name)
-
-        return self.df.with_columns([outputs_by_name[output_name] for output_name, _expr, _validation in items])
+        return evaluate_many_segmented_columns(
+            prepared,
+            self.df,
+            items,
+            get_segment_spec_key=self._get_segment_spec_key,
+            get_segmented_view_for_key=self._get_segmented_view,
+            compile_expr=self._compile_expr,
+        )
 
     def _evaluate_staged_column(
         self,
@@ -3836,18 +3830,16 @@ class Executor:
 
     def _get_segmented_view(self, segment_spec_key: SegmentSpecKey) -> pl.DataFrame:
         prepared = self._get_prepared_frame()
-        segmented_view = prepared.segmented_views.get(segment_spec_key)
-        if segmented_view is not None:
-            return segmented_view
-
-        # Segment views are cached per immutable spec key so evaluate_many() can
-        # reuse the same ordered split across multiple segmented expressions.
-        segmented_view = self._prepare_segmented_sorted_df(
-            prepared.sorted_df,
-            segment_spec_key=segment_spec_key,
+        return get_segmented_view(
+            prepared,
+            segment_spec_key,
+            prepare_segmented_sorted_df=(
+                lambda sorted_df, key: self._prepare_segmented_sorted_df(
+                    sorted_df,
+                    segment_spec_key=key,
+                )
+            ),
         )
-        prepared.segmented_views[segment_spec_key] = segmented_view
-        return segmented_view
 
     def _evaluate_table(self, expr: Expr, validation: ValidationResult) -> pl.DataFrame:
         if validation.backend == "fft":
@@ -4868,79 +4860,32 @@ class Executor:
         *,
         segment_spec_key: SegmentSpecKey,
     ) -> pl.DataFrame:
-        with_group_position = sorted_df.with_columns(
-            [
-                (pl.col(self.code_col).cum_count().over(self.code_col) - 1).alias(
-                    self._code_pos_name
-                ),
-                pl.len().over(self.code_col).alias(self._code_len_name),
-            ]
+        return prepare_segmented_sorted_df(
+            sorted_df,
+            segment_spec_key=segment_spec_key,
+            code_col=self.code_col,
+            code_pos_name=self._code_pos_name,
+            code_len_name=self._code_len_name,
+            segment_id_name=self._segment_id_name,
         )
-
-        kind, spec_value = segment_spec_key
-        if kind == "equal":
-            if not isinstance(spec_value, int):
-                raise ExecutionError("Internal error: invalid equal segment specification")
-            segment_id_expr = self._build_equal_segment_id_expr(spec_value)
-        elif kind == "length":
-            if not isinstance(spec_value, tuple):
-                raise ExecutionError("Internal error: invalid length segment specification")
-            self._ensure_segment_lengths_cover_groups(with_group_position, spec_value)
-            segment_id_expr = self._build_length_segment_id_expr(spec_value)
-        else:
-            raise ExecutionError(f"Internal error: unsupported segment specification kind '{kind}'")
-
-        return with_group_position.with_columns(segment_id_expr.alias(self._segment_id_name))
 
     def _build_equal_segment_id_expr(self, segment_count: int) -> pl.Expr:
-        code_pos = pl.col(self._code_pos_name)
-        code_len = pl.col(self._code_len_name)
-        segment_count_lit = pl.lit(segment_count)
-        base_size = code_len // segment_count_lit
-        larger_segment_count = code_len % segment_count_lit
-        larger_segment_rows = (base_size + 1) * larger_segment_count
-
-        # Segment remainders are assigned to the earliest buckets so the split
-        # stays deterministic and the n > m case naturally collapses to 1-row segments.
-        segment_id_expr = (
-            pl.when(code_pos < larger_segment_rows)
-            .then(code_pos // (base_size + 1))
-            .otherwise(
-                pl.when(base_size > 0)
-                .then(
-                    larger_segment_count
-                    + ((code_pos - larger_segment_rows) // base_size)
-                )
-                .otherwise(code_pos)
-            )
-            .cast(pl.Int64)
+        return build_equal_segment_id_expr(
+            segment_count,
+            code_pos_name=self._code_pos_name,
+            code_len_name=self._code_len_name,
         )
 
-        return segment_id_expr
-
     def _build_length_segment_id_expr(self, lengths: tuple[int, ...]) -> pl.Expr:
-        code_pos = pl.col(self._code_pos_name)
-        cumulative = 0
-        segment_id_expr: pl.Expr | None = None
-
-        for index, length in enumerate(lengths):
-            cumulative += length
-            if segment_id_expr is None:
-                segment_id_expr = pl.when(code_pos < cumulative).then(index)
-            else:
-                segment_id_expr = segment_id_expr.when(code_pos < cumulative).then(index)
-
-        if segment_id_expr is None:
-            raise ExecutionError("Internal error: empty length segment specification")
-
-        return segment_id_expr.otherwise(len(lengths) - 1).cast(pl.Int64)
+        return build_length_segment_id_expr(lengths, code_pos_name=self._code_pos_name)
 
     def _ensure_segment_lengths_cover_groups(
         self,
         prepared_df: pl.DataFrame,
         lengths: tuple[int, ...],
     ) -> None:
-        total_length = sum(lengths)
-        uncovered = prepared_df.filter(pl.col(self._code_len_name) > total_length).head(1)
-        if uncovered.height > 0:
-            raise ExecutionError("segment lengths do not cover full group")
+        ensure_segment_lengths_cover_groups(
+            prepared_df,
+            lengths,
+            code_len_name=self._code_len_name,
+        )
