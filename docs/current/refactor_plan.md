@@ -151,3 +151,7 @@ Phase 3.13 isolates materialization boundary helpers in `execution_materializati
 Phase 3.14 isolates executor lifecycle integration helpers in `execution_lifecycle.py`, while keeping lifecycle policy in `lifecycle.py` and preserving drop semantics.
 
 Phase 3.15 finalizes the executor coordinator boundary in [executor_final_architecture.md](executor_final_architecture.md). `executor.py` remains the public execution coordinator and compatibility facade; execution modules own route-specific shells and helper boundaries.
+
+## Phase 3 Closure
+
+Phase 3 is closed. The repository is `READY_FOR_RUNTIME_API`. Further executor changes require a new refactor proposal.
