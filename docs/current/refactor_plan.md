@@ -135,3 +135,7 @@ Each Phase 3 commit must be single-purpose and reversible with one commit revert
 ## Execution Path Split Readiness
 
 The current readiness gate for the next phase is tracked in [execution_path_split_readiness.md](execution_path_split_readiness.md). It lists the completed boundary extractions, remaining core paths, preconditions, and recommended split order.
+
+## Pre-DAG Closure
+
+The pre-DAG execution path split is closed in [pre_dag_refactor_closure.md](pre_dag_refactor_closure.md). DAG/CSE batch reuse, lifecycle deep drop, materialization candidate planning, node store / consumer count, and executor-native reuse remain intentionally unsplit.

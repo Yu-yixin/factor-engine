@@ -45,3 +45,5 @@ The main public flow is:
 Phase 3 refactoring must remain incremental. The current extractions include pure helpers in `executor_utils.py`, row-aligned compiled helpers in `execution_row_aligned.py`, ordered compiled helpers in `execution_ordered.py`, staged/materialized orchestration shells in `execution_materialized.py`, segmented execution shell helpers in `execution_segmented.py`, positional/native shell helpers in `execution_positional.py`, profiling event/detail builders in `execution_profiling.py`, prepared-frame/order helpers in `execution_ordering.py`, and output assembly shell helpers in `execution_output.py`; public execution behavior still belongs to `executor.py`. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
 
 The next execution-path split readiness gate is tracked in [execution_path_split_readiness.md](execution_path_split_readiness.md).
+
+The pre-DAG execution path split closure is tracked in [pre_dag_refactor_closure.md](pre_dag_refactor_closure.md).
