@@ -15,6 +15,7 @@ from factor_engine.ast_nodes import (
 )
 from factor_engine.dag import DagNode, ExpressionDagBuilder, NodeResultStore
 from factor_engine.errors import ExecutionError
+from factor_engine.execution_materialization import materialized_consumer_count
 
 
 @dataclass
@@ -248,10 +249,7 @@ def initialize_dag_execution_context(batch_dag) -> DagExecutionContext:
                     node_id=node.node_id,
                     identity=node.identity,
                     materialization_kind=node.materialization_kind,
-                    consumer_count=max(
-                        node.occurrence_count,
-                        len(node.consumers) + len(node.output_names),
-                    ),
+                    consumer_count=materialized_consumer_count(node),
                     materialization_reason=node.materialization_reason,
                     materialization_eligibility=node.materialization_eligibility,
                     recomputation_expansion_if_inline=node.recomputation_expansion_if_inline,

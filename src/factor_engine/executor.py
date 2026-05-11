@@ -56,6 +56,7 @@ from factor_engine.execution_materialized import (
     evaluate_materialized_ordered_column,
     evaluate_staged_column,
 )
+from factor_engine.execution_materialization import apply_dag_materialization_runtime_summary
 from factor_engine.execution_output import (
     append_ordered_output_columns,
     restore_selected_columns,
@@ -2589,37 +2590,7 @@ class Executor:
                 planned_stage_consumers=planned_stage_consumers,
             )
             if batch_plan.dag is not None:
-                runtime.ast_node_count = batch_plan.dag.ast_node_count
-                runtime.dag_node_count = batch_plan.dag.dag_node_count
-                runtime.deduplicated_node_count = batch_plan.dag.deduplicated_node_count
-                runtime.shared_node_count = batch_plan.dag.shared_node_count
-                runtime.materialized_node_count = batch_plan.dag.materialized_node_count
-                runtime.expensive_node_count = batch_plan.dag.expensive_node_count
-                runtime.estimated_unshared_compute_calls = sum(
-                    node.occurrence_count for node in batch_plan.dag.nodes if node.materialize
-                )
-                guardrail_candidates = [
-                    node
-                    for node in batch_plan.dag.nodes
-                    if node.default_materialize and node.recomputation_expansion_if_inline > 0
-                ]
-                runtime.recomputation_guardrail_candidate_count = len(guardrail_candidates)
-                runtime.recomputation_guardrail_allowed_count = sum(
-                    1 for node in guardrail_candidates if node.recomputation_guardrail_pass
-                )
-                runtime.recomputation_guardrail_blocked_count = sum(
-                    1 for node in guardrail_candidates if not node.recomputation_guardrail_pass
-                )
-                runtime.recomputation_expansion_estimate = sum(
-                    node.recomputation_expansion_if_inline
-                    for node in guardrail_candidates
-                    if node.recomputation_guardrail_pass
-                )
-                runtime.recomputation_expansion_actual_delta = sum(
-                    node.recomputation_expansion_if_inline
-                    for node in guardrail_candidates
-                    if not node.materialize
-                )
+                apply_dag_materialization_runtime_summary(runtime, batch_plan.dag)
 
         if compiled_time_items:
             if runtime is not None:

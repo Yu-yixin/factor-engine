@@ -24,6 +24,7 @@ The main public flow is:
 - `execution_row_aligned.py`: no-order row-aligned compiled expression application and simple batch `with_columns` helpers.
 - `execution_ordered.py`: ordered row-aligned compiled expression application using prepared frames and original-order restoration.
 - `execution_materialized.py`: staged/materialized ordered orchestration shells around executor-owned materialization callbacks.
+- `execution_materialization.py`: materialized consumer-count policy and recomputation guardrail summary helpers.
 - `execution_segmented.py`: segmented view preparation, segment id construction, segmented expression orchestration, and output restore shell.
 - `execution_positional.py`: positional ordered orchestration, argmax/argmin kernel wrapper, Python fallback scan, and native bridge shell.
 - `execution_dag.py`: DAG identity, materialized-node rewrite/count helpers, planned consumer counters, and DAG execution context initialization.
@@ -44,7 +45,7 @@ The main public flow is:
 
 `executor.py` is large and carries multiple responsibilities today. That is an observed fact, not an instruction to rewrite it in one pass.
 
-Phase 3 refactoring must remain incremental. The current extractions include pure helpers in `executor_utils.py`, row-aligned compiled helpers in `execution_row_aligned.py`, ordered compiled helpers in `execution_ordered.py`, staged/materialized orchestration shells in `execution_materialized.py`, segmented execution shell helpers in `execution_segmented.py`, positional/native shell helpers in `execution_positional.py`, DAG helper boundaries in `execution_dag.py`, CSE materialization shell helpers in `execution_cse.py`, profiling event/detail builders in `execution_profiling.py`, prepared-frame/order helpers in `execution_ordering.py`, and output assembly shell helpers in `execution_output.py`; public execution behavior still belongs to `executor.py`. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
+Phase 3 refactoring must remain incremental. The current extractions include pure helpers in `executor_utils.py`, row-aligned compiled helpers in `execution_row_aligned.py`, ordered compiled helpers in `execution_ordered.py`, staged/materialized orchestration shells in `execution_materialized.py`, materialization guardrail helpers in `execution_materialization.py`, segmented execution shell helpers in `execution_segmented.py`, positional/native shell helpers in `execution_positional.py`, DAG helper boundaries in `execution_dag.py`, CSE materialization shell helpers in `execution_cse.py`, profiling event/detail builders in `execution_profiling.py`, prepared-frame/order helpers in `execution_ordering.py`, and output assembly shell helpers in `execution_output.py`; public execution behavior still belongs to `executor.py`. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
 
 The next execution-path split readiness gate is tracked in [execution_path_split_readiness.md](execution_path_split_readiness.md).
 
