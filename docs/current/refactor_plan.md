@@ -97,7 +97,8 @@ These areas cross many invariants and need narrower tests before extraction.
 2. Phase 3.2: isolate profiling/accounting helpers into `execution_profiling.py`, keeping field names and report structures unchanged. Completed first profiling boundary: schema constants plus memory/output/native-buffer/positional detail builders.
 3. Phase 3.3: isolate prepared-frame/order helpers into `execution_ordering.py`, preserving row restoration semantics. Completed ordering boundary: row-index naming, ordering-column validation, prepared-frame construction, and restore helpers.
 4. Phase 3.3B: isolate output assembly shell helpers into `execution_output.py`, preserving final column order, output names, and helper-column filtering. Completed output boundary: restore/select helpers and ordered-output append helpers.
-5. Later: consider lifecycle, segmented, native, and DAG/CSE modules only after targeted tests are stable.
+5. Phase 3.4: isolate no-order row-aligned compiled helpers into `execution_row_aligned.py`, preserving simple `with_columns` behavior and output order.
+6. Later: consider lifecycle, segmented, native, and DAG/CSE modules only after targeted tests are stable.
 
 ## Test Guardrails
 

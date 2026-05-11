@@ -44,6 +44,10 @@ from factor_engine.execution_output import (
     append_ordered_output_columns,
     restore_selected_columns,
 )
+from factor_engine.execution_row_aligned import (
+    evaluate_many_row_aligned_no_time_order,
+    evaluate_row_aligned_no_time_order,
+)
 from factor_engine.fourier import fourier_transform_frame
 from factor_engine.lifecycle import (
     FirstWaveCandidateInput,
@@ -1121,8 +1125,11 @@ class Executor:
         *,
         output_name: str,
     ) -> pl.DataFrame:
-        # Pointwise and cross-sectional expressions can stay on the original row order.
-        return self.df.with_columns(compiled.alias(output_name))
+        return evaluate_row_aligned_no_time_order(
+            self.df,
+            compiled,
+            output_name=output_name,
+        )
 
     def _evaluate_row_aligned_time_ordered(
         self,
@@ -1143,8 +1150,7 @@ class Executor:
         base_df: pl.DataFrame,
         items: list[tuple[str, pl.Expr]],
     ) -> pl.DataFrame:
-        compiled = [expr.alias(output_name) for output_name, expr in items]
-        return base_df.with_columns(compiled)
+        return evaluate_many_row_aligned_no_time_order(base_df, items)
 
     def _evaluate_many_row_aligned_time_ordered(
         self,
