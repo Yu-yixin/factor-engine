@@ -126,3 +126,7 @@ Each Phase 3 commit must be single-purpose and reversible with one commit revert
 - Do not rename public APIs during extraction.
 - Keep compatibility wrappers when tests or scripts touch private helpers.
 - If a test failure is not clearly a path/import issue, stop and revert the extraction instead of changing semantics.
+
+## Execution Path Split Readiness
+
+The current readiness gate for the next phase is tracked in [execution_path_split_readiness.md](execution_path_split_readiness.md). It lists the completed boundary extractions, remaining core paths, preconditions, and recommended split order.
