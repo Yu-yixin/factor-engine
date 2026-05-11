@@ -78,7 +78,8 @@ def test_batch_report_uses_evaluate_many_fast_path_for_all_valid_expressions():
 
 def test_benchmark_summary_can_write_latest_json():
     with workspace_temp_dir() as temp_dir:
-        module_path = Path(__file__).resolve().parents[1] / "examples" / "benchmark_real_workload.py"
+        repo_root = Path(__file__).resolve().parents[2]
+        module_path = repo_root / "benchmarks" / "scripts" / "benchmark_real_workload.py"
         spec = importlib.util.spec_from_file_location("benchmark_real_workload", module_path)
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
