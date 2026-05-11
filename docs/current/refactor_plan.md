@@ -101,7 +101,8 @@ These areas cross many invariants and need narrower tests before extraction.
 6. Phase 3.5: isolate ordered row-aligned compiled helpers into `execution_ordered.py`, preserving prepared-frame usage and original-order restoration.
 7. Phase 3.6: isolate staged/materialized ordered orchestration shells into `execution_materialized.py`, while leaving nested materialization internals in executor-owned callbacks.
 8. Phase 3.7: isolate segmented view preparation and segmented execution shell helpers into `execution_segmented.py`, preserving segment semantics and output restoration.
-9. Later: consider lifecycle, native, and DAG/CSE modules only after targeted tests are stable.
+9. Phase 3.8: isolate positional ordered orchestration and native bridge shell helpers into `execution_positional.py`, preserving Python fallback and native availability behavior.
+10. Later: consider lifecycle and DAG/CSE modules only after targeted tests are stable.
 
 ## Test Guardrails
 

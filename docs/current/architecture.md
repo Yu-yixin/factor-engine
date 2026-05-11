@@ -25,6 +25,7 @@ The main public flow is:
 - `execution_ordered.py`: ordered row-aligned compiled expression application using prepared frames and original-order restoration.
 - `execution_materialized.py`: staged/materialized ordered orchestration shells around executor-owned materialization callbacks.
 - `execution_segmented.py`: segmented view preparation, segment id construction, segmented expression orchestration, and output restore shell.
+- `execution_positional.py`: positional ordered orchestration, argmax/argmin kernel wrapper, Python fallback scan, and native bridge shell.
 - `executor_utils.py`: low-risk executor utility helpers for internal names and literal validation. This module must stay free of DataFrame execution, route decisions, lifecycle policy, profiling accounting, and native bridge behavior.
 - `execution_ordering.py`: prepared-frame construction, row-index naming, ordering-column validation, and original-order restore helpers. This module owns the input ordering shell but not ordered expression evaluation.
 - `execution_output.py`: output-column restore, final selection, append, and duplicate-name guard helpers. This module owns output assembly shell helpers but not expression evaluation, dispatch, lifecycle, or profiling accounting.
@@ -41,6 +42,6 @@ The main public flow is:
 
 `executor.py` is large and carries multiple responsibilities today. That is an observed fact, not an instruction to rewrite it in one pass.
 
-Phase 3 refactoring must remain incremental. The current extractions include pure helpers in `executor_utils.py`, row-aligned compiled helpers in `execution_row_aligned.py`, ordered compiled helpers in `execution_ordered.py`, staged/materialized orchestration shells in `execution_materialized.py`, segmented execution shell helpers in `execution_segmented.py`, profiling event/detail builders in `execution_profiling.py`, prepared-frame/order helpers in `execution_ordering.py`, and output assembly shell helpers in `execution_output.py`; public execution behavior still belongs to `executor.py`. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
+Phase 3 refactoring must remain incremental. The current extractions include pure helpers in `executor_utils.py`, row-aligned compiled helpers in `execution_row_aligned.py`, ordered compiled helpers in `execution_ordered.py`, staged/materialized orchestration shells in `execution_materialized.py`, segmented execution shell helpers in `execution_segmented.py`, positional/native shell helpers in `execution_positional.py`, profiling event/detail builders in `execution_profiling.py`, prepared-frame/order helpers in `execution_ordering.py`, and output assembly shell helpers in `execution_output.py`; public execution behavior still belongs to `executor.py`. Future refactoring must start from stable tests and the invariants in [invariants.md](invariants.md).
 
 The next execution-path split readiness gate is tracked in [execution_path_split_readiness.md](execution_path_split_readiness.md).
