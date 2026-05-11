@@ -40,6 +40,10 @@ from factor_engine.execution_ordering import (
     SegmentSpecKey,
     build_prepared_frame,
 )
+from factor_engine.execution_ordered import (
+    evaluate_many_row_aligned_time_ordered,
+    evaluate_row_aligned_time_ordered,
+)
 from factor_engine.execution_output import (
     append_ordered_output_columns,
     restore_selected_columns,
@@ -1138,11 +1142,10 @@ class Executor:
         output_name: str,
     ) -> pl.DataFrame:
         prepared = self._get_prepared_frame()
-        sorted_df = prepared.sorted_df.with_columns(compiled.alias(output_name))
-        return restore_selected_columns(
-            sorted_df,
-            prepared.row_index_name,
-            [column for column in sorted_df.columns if column != prepared.row_index_name],
+        return evaluate_row_aligned_time_ordered(
+            prepared,
+            compiled,
+            output_name=output_name,
         )
 
     def _evaluate_many_row_aligned_no_time_order(
@@ -1157,10 +1160,7 @@ class Executor:
         items: list[tuple[str, pl.Expr]],
     ) -> pl.DataFrame:
         prepared = self._get_prepared_frame()
-        compiled = [expr.alias(output_name) for output_name, expr in items]
-
-        prepared.sorted_df = prepared.sorted_df.with_columns(compiled)
-        return prepared.restore_output_columns([output_name for output_name, _ in items])
+        return evaluate_many_row_aligned_time_ordered(prepared, items)
 
     def _evaluate_segmented_column(
         self,
