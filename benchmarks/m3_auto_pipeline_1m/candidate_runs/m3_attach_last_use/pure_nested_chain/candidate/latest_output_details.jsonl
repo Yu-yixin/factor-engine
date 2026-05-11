@@ -1,1 +1,0 @@
-{"output_name": "nested", "batch_id": "71ef2da4471744e685087e9a478775fd:batch:1", "created_order_index": 1, "attached_order_index": 4, "last_required_order_index": 4, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 498.31640625, "source_column_name": null, "attached_to_working_frame": false}

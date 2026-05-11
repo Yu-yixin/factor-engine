@@ -6,6 +6,15 @@ requires-python = ">=3.10"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "unit: fast unit tests",
+    "integration: integration tests",
+    "workflow: workflow and file IO tests",
+    "native: tests requiring native extension",
+    "slow: slow tests",
+    "perf: performance or benchmark-like tests",
+    "profiling: tests that generate profiling artifacts",
+]
 
 [tool.ruff]
 line-length = 100

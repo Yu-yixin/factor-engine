@@ -1,1 +1,0 @@
-{"output_name": "native_heavy", "batch_id": "22deb34f27f448a0a6a98a71d8d01c87:batch:1", "created_order_index": 10, "attached_order_index": 11, "last_required_order_index": 11, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 578.18359375, "source_column_name": "___stage_value", "attached_to_working_frame": false}

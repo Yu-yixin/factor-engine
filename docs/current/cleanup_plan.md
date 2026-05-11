@@ -21,6 +21,13 @@ The cleanup plan is intentionally staged. Phase 1 establishes rules only.
 - Decide which existing benchmark summaries remain in Git and which detailed run artifacts move to external storage or archive.
 - Remove tracked artifact files only through an explicit, reviewed plan.
 
+Phase 2 focus:
+
+- De-track caches, build outputs, runtime artifacts, benchmark run details, local data, and generated outputs.
+- Keep local files in place; use `git rm --cached` only for de-tracking.
+- Avoid source refactoring and behavior changes.
+- Prepare later test, documentation, benchmark, and artifact physical re-layout.
+
 ## Phase 3: Refactor
 
 - Split `executor.py` only after the test baseline is stable.
@@ -28,4 +35,3 @@ The cleanup plan is intentionally staged. Phase 1 establishes rules only.
 - Clarify native bridge boundaries and fallback contracts.
 - Keep public `evaluate()` and `evaluate_many()` behavior stable unless an explicit design changes it.
 - Treat performance-sensitive refactoring as benchmark-driven work, not cosmetic cleanup.
-

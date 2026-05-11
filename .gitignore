@@ -35,8 +35,20 @@ tmp_*/
 out.txt
 
 # Runtime artifacts
-artifacts/
-outputs/
+artifacts/*
+!artifacts/README.md
+!artifacts/benchmark_runs/
+!artifacts/benchmark_runs/.gitkeep
+!artifacts/profiling/
+!artifacts/profiling/.gitkeep
+!artifacts/tmp/
+!artifacts/tmp/.gitkeep
+!artifacts/outputs/
+!artifacts/outputs/.gitkeep
+!artifacts/local_data/
+!artifacts/local_data/.gitkeep
+outputs/*
+!outputs/README.md
 *.parquet
 *.csv
 *.jsonl

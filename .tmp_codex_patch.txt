@@ -1,6 +1,0 @@
-﻿*** Begin Patch
-*** Update File: docs/ordered_correctness_audit.md
-@@
--## Goal
-+## Goal
-*** End Patch

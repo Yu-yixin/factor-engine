@@ -1,1 +1,0 @@
-{"output_name": "multi_child", "batch_id": "005c207f543640bfa0032bbda183c600:batch:1", "created_order_index": 1, "attached_order_index": 8, "last_required_order_index": 8, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 9, "rss_at_attach_mb": 71.69921875, "source_column_name": null, "attached_to_working_frame": false}

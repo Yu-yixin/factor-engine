@@ -1,1 +1,0 @@
-{"output_name": "frame_01", "batch_id": "8bf89439f0ea4f578a2d1aa0db515d2f:batch:1", "created_order_index": 8, "attached_order_index": 12, "last_required_order_index": 12, "alive_at_batch_end": true, "is_late_alive_output": false, "frame_col_count_at_attach": 6, "rss_at_attach_mb": 66.43359375, "source_column_name": "____stage_value", "attached_to_working_frame": false}
