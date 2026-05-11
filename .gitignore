@@ -1,1 +1,66 @@
 __pycache__
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+tmp_*/
+.tmp/
+.tmp_*/
+*.tmp
+out.txt
+
+# Runtime artifacts
+artifacts/
+outputs/
+*.parquet
+*.csv
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+
+# Benchmark/profiling generated outputs
+benchmarks/**/latest_*
+benchmarks/**/history.csv
+benchmarks/**/*.jsonl
+benchmarks/**/memory_events*.json
+benchmarks/**/node_execution*.json
+benchmarks/**/stage_events*.json
+
+# Rust/native build
+native/**/target/
+*.dll
+*.pdb
+*.rlib
+*.rmeta
+*.so
+*.dylib
+
+# Logs
+*.log
+logs/
