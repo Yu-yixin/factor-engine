@@ -49,6 +49,7 @@ artifacts/*
 !artifacts/local_data/.gitkeep
 outputs/*
 !outputs/README.md
+data/
 *.parquet
 *.csv
 *.jsonl
