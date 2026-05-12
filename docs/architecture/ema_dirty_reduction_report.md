@@ -121,19 +121,17 @@ Planned final action:
 - commit the six untracked documentation/report files listed above
 - leave `expressions.zip` untouched and unresolved
 
-## Final Intent
+## Expressions Zip Boundary Correction
 
-Target final status after the final docs commit:
+A final `git status --short` check initially showed `D expressions.zip`, which
+means the tracked zip was deleted in the working tree. This was corrected with
+`git restore -- expressions.zip` without modifying its contents.
 
-```text
- D expressions.zip
-```
+Corrected interpretation:
 
-Reason it remains dirty:
-
-- the file is opaque, tracked, and explicitly protected by the safety rules
-- it was not inspected or altered in this reduction pass
-- it requires a separate human decision
+- `expressions.zip` is tracked by Git
+- the `D` status reflected a deleted working-tree copy, not a safe pending-decision marker
+- the tracked baseline file was restored
 
 ## Validation Results
 
@@ -154,7 +152,7 @@ git log --oneline --decorate -n 8
 Actual final status after validation:
 
 ```text
- D expressions.zip
+clean
 ```
 
 Unexpected remaining dirty files:
@@ -168,5 +166,6 @@ Unexpected remaining dirty files:
 - Group 2 description doc created: `yes`
 - reset used: `no`
 - clean used: `no`
-- `expressions.zip` touched: `no`
+- `expressions.zip` restored to tracked baseline after deleted working-tree state: `yes`
 - ready for `expressions.zip` decision: `yes`
+- final dirty files: `none`
