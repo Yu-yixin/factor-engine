@@ -2,6 +2,11 @@
 
 本文档是 Factor Engine 的完整函数语义参考。它覆盖 `registry.py` 中当前注册的全部函数。DSL 语法和运算符规则请看 [language.md](language.md)，工作流与错误系统请看 [workflow.md](workflow.md) 和 [errors.md](errors.md)。
 
+Experimental branch note:
+
+- This branch documents an experimental `ema()` path for isolated evaluation.
+- `ema()` and MACD-shaped compositions are not accepted as stable-master DSL commitments.
+
 ## 1. 函数总览
 
 ### 1.1 条件与 null
@@ -29,6 +34,7 @@
 
 - `delay`
 - `delta`
+- `ema`
 - `pct_change`
 - `ts_min`
 - `ts_max`
@@ -348,6 +354,34 @@
 - 最小示例：
   - `pct_change(close, 1)`
 
+### `ema(x, span)`
+
+Experimental status:
+
+- Available on `feature/ema-macd-experiment` for isolated evaluation only.
+- Not a stable-master contract.
+
+- 定义：指数移动平均，语义固定为 `pandas.Series.ewm(span=span, adjust=False).mean()`
+- 参数：
+  - `x`：数值表达式
+  - `span`：正整数字面量
+- 返回类型：数值列
+- 语义规则：
+  - `alpha = 2 / (span + 1)`
+  - 对每个 `code` 独立按 `time` 升序递推
+  - 第一条非空输入成为 EMA 初始状态
+  - 后续非空输入按 `ema[t] = alpha * x[t] + (1 - alpha) * ema[t-1]` 更新
+  - 输入为 `null` 时遵循 pandas `adjust=False` 默认行为：输出延续上一条 EMA，下一条非空输入仍按绝对位置衰减后的权重更新
+- 边界情况：
+  - 需要 `time` 和 `code` 列
+  - `span` 必须大于 0，且必须是整数字面量
+  - EMA 是 ordered recursive operator，不是 rolling-window operator
+  - `ema(x, span)` 不等价于 `ts_mean(x, span)`
+- 最小示例：
+  - `ema(close, 12)`
+  - `ema(close, 12) - ema(close, 26)`
+  - MACD 可由 `ema(close, 12) - ema(close, 26)` 与 `ema(ema(close, 12) - ema(close, 26), 9)` 组合表达；当前没有 `macd()` 函数
+
 ### `ts_min(x, n)`
 
 - 定义：历史窗口最小值
@@ -363,6 +397,46 @@
   - `n` 必须大于 0
 - 最小示例：
   - `ts_min(close, 5)`
+
+## Factor Engine MACD DSL Contract
+
+Experimental status:
+
+- This section documents experiment-branch behavior only.
+- It must not be read as a stable-master rollout claim.
+
+Trading-system integration should compose MACD from `ema()` and should not call
+or register a `macd()` primitive.
+
+Required input columns:
+
+```text
+code
+time
+close
+```
+
+Recommended downstream fields and exact expressions:
+
+```text
+macd_dif  = ema(close, 12) - ema(close, 26)
+macd_dea  = ema(ema(close, 12) - ema(close, 26), 9)
+macd_hist = (ema(close, 12) - ema(close, 26)) - ema(ema(close, 12) - ema(close, 26), 9)
+```
+
+Ordering and alignment contract:
+
+- The engine sorts internally by `code`, then `time`, for ordered EMA execution.
+- EMA state is isolated per `code`.
+- Outputs are row-aligned with the input.
+- Original input row order is restored in the returned frame.
+
+Important boundary:
+
+- `macd()` is intentionally unsupported.
+- `ts_mean(close, n)` is not equivalent to `ema(close, n)`.
+- The current implementation prioritizes correctness through the Polars/Python
+  ordered EMA path, not a native optimized kernel.
 
 ### `ts_max(x, n)`
 

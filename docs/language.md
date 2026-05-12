@@ -156,10 +156,11 @@ not is_null(close) and fill_null(flag, false)
 
 ## 7. 语言级边界
 
-- rolling / segmented 窗口参数不是通用表达式；它们由对应函数单独约束
+- rolling / segmented 窗口参数和 `ema` 的 `span` 不是通用表达式；它们由对应函数单独约束
 - 表级表达式不能嵌入列级表达式
 - `evaluate_many()` 只接受列级表达式
 - 当前没有字符串、枚举、对象或嵌套表结构的 DSL 表达能力
+- `ema(...)` in this experiment branch is not evidence of stable-master rollout
 
 ## 8. 最小示例
 

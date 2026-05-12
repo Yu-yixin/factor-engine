@@ -248,9 +248,16 @@ AST 是表达式系统的核心内部表示，定义在 `src/factor_engine/ast_n
 - `delay`
 - `delta`
 - `pct_change`
+- `ema`
 - `ts_min / ts_max / ts_mean / ts_sum / ts_std`
 - `ts_count / ts_any / ts_all / ts_rank`
 - `corr / cov / skew / kurt`
+
+`ema(x, span)` is an ordered recursive time-series operator. It reuses the
+existing ordered execution shell (`code` partition, `time` order, original row
+restore), but it is not a rolling-window operator and must not be treated as
+`ts_mean`. On `feature/ema-macd-experiment`, this path is experimental only and
+is not a stable-master contract.
 
 ### 5.4 表级结果
 
