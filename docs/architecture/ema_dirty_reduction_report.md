@@ -134,3 +134,39 @@ Reason it remains dirty:
 - the file is opaque, tracked, and explicitly protected by the safety rules
 - it was not inspected or altered in this reduction pass
 - it requires a separate human decision
+
+## Validation Results
+
+- `pytest`: `562 passed, 2 skipped`
+- `cargo check`: `PASS`
+
+Validation commands run:
+
+```text
+../factor-engine/.venv/Scripts/python.exe -m pytest
+cargo.exe check --target-dir C:\Users\yuyix\Desktop\factor-engine\native\factor_engine_native\target
+git status --short --untracked-files=all
+git log --oneline --decorate -n 8
+```
+
+## Final Dirty Tree
+
+Actual final status after validation:
+
+```text
+ D expressions.zip
+```
+
+Unexpected remaining dirty files:
+
+- none
+
+## Final Outcome
+
+- Group 1 committed: `yes`
+- Group 3 cleaned/restored/moved: `yes`
+- Group 2 description doc created: `yes`
+- reset used: `no`
+- clean used: `no`
+- `expressions.zip` touched: `no`
+- ready for `expressions.zip` decision: `yes`
