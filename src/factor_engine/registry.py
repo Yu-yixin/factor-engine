@@ -9,7 +9,7 @@ from factor_engine.physical_properties import OperatorContract, PhysicalProperti
 ResultKind = Literal["column", "table"]
 ArgRule = Literal["any_expr", "variable_only"]
 ExecutionKind = Literal["pointwise", "cross_sectional", "time_series", "table"]
-WindowKind = Literal["none", "rolling", "positional", "segmented"]
+WindowKind = Literal["none", "rolling", "positional", "segmented", "recursive"]
 ProducesMode = Literal["same_as_requires", "custom"]
 PropertyToken = Literal["$time", "$code", "$group"]
 OrderedAuditStatus = Literal["audited", "blocked"]
@@ -312,6 +312,20 @@ FUNCTION_REGISTRY: dict[str, FunctionSpec] = {
         requires_code_col=True,
         numeric_arg_positions=(0,),
         execution_kind="time_series",
+        needs_code_group=True,
+        needs_time_order=True,
+        requires_partition_by=("$code",),
+        requires_order_by=("$time",),
+    ),
+    "ema": _spec(
+        "ema",
+        2,
+        2,
+        requires_time_col=True,
+        requires_code_col=True,
+        numeric_arg_positions=(0,),
+        execution_kind="time_series",
+        window_kind="recursive",
         needs_code_group=True,
         needs_time_order=True,
         requires_partition_by=("$code",),

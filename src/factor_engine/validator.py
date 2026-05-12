@@ -267,22 +267,30 @@ class Validator:
     def _validate_literal_contracts(self, expr: CallNode) -> None:
         if expr.name in {"scale", "signedpower"} and len(expr.args) >= 2:
             self._expect_scalar_number_literal(expr.args[1], expr.name)
+        if expr.name == "ema" and len(expr.args) >= 2:
+            self._expect_positive_integer_literal(expr.args[1], expr.name, label="span")
 
     def _expect_scalar_number_literal(self, expr: Expr, func_name: str) -> float:
         if not isinstance(expr, NumberNode):
             raise ArgumentError(f"Function '{func_name}' requires a scalar numeric literal")
         return float(expr.value)
 
-    def _expect_positive_integer_literal(self, expr: Expr, func_name: str) -> int:
+    def _expect_positive_integer_literal(
+        self,
+        expr: Expr,
+        func_name: str,
+        *,
+        label: str = "segment count",
+    ) -> int:
         if not isinstance(expr, NumberNode):
             raise ArgumentError(
-                f"Function '{func_name}' requires a positive integer literal segment count"
+                f"Function '{func_name}' requires a positive integer literal {label}"
             )
 
         value = expr.value
         if int(value) != value or value <= 0:
             raise ArgumentError(
-                f"Function '{func_name}' requires a positive integer literal segment count"
+                f"Function '{func_name}' requires a positive integer literal {label}"
             )
 
         return int(value)
@@ -526,6 +534,7 @@ class Validator:
                 "log",
                 "delta",
                 "demean",
+                "ema",
                 "group_demean",
                 "group_rank",
                 "group_zscore",

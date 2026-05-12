@@ -3492,6 +3492,8 @@ class Executor:
             return self._compile_cov(expr)
         if function_name == "delta":
             return self._compile_delta(expr)
+        if function_name == "ema":
+            return self._compile_ema(expr)
         if function_name == "where":
             return self._compile_where(expr)
         if function_name == "delay":
@@ -3915,6 +3917,20 @@ class Executor:
 
         # Keep delta aligned with the documented engine semantics: x - delay(x, n).
         return value_expr - self._compile_shifted_time_series(value_expr, periods)
+
+    def _compile_ema(self, expr: CallNode) -> pl.Expr:
+        if len(expr.args) != 2 or expr.kwargs:
+            raise ExecutionError("ema(x, span) expects exactly 2 positional arguments")
+
+        value_expr = self._compile_time_series_input(expr.args[0])
+        span = self._expect_positive_numeric_literal(expr.args[1], "ema")
+
+        return value_expr.ewm_mean(
+            span=span,
+            adjust=False,
+            min_samples=1,
+            ignore_nulls=False,
+        ).fill_null(strategy="forward").over(self.code_col)
 
     def _compile_ts_mean(self, expr: CallNode) -> pl.Expr:
         if len(expr.args) != 2 or expr.kwargs:
