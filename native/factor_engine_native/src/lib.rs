@@ -6,6 +6,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use rayon::prelude::*;
 
+mod rolling_moments;
+
 #[derive(Clone, Copy)]
 enum ExtremeMode {
     ArgMax,
@@ -328,5 +330,6 @@ fn grouped_positional_extreme_buffers<'py>(
 fn factor_engine_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(grouped_positional_extreme, module)?)?;
     module.add_function(wrap_pyfunction!(grouped_positional_extreme_buffers, module)?)?;
+    module.add_function(wrap_pyfunction!(rolling_moments::grouped_corr_cov, module)?)?;
     Ok(())
 }
