@@ -15,6 +15,12 @@ This document freezes the current profiling and benchmark output contract before
 | `latest_native_buffer_details.jsonl` | Native output buffer lifecycle details. | Executor native-buffer profiling hooks. | `tests/profiling`, native/lifecycle analysis. | Generated latest files do not enter Git. | Artifact. | Native buffer keys and default values must not change. |
 | `latest_positional_phase_details.jsonl` | Positional ordered phase timings and native/fallback flags. | Executor positional ordered path. | Native fallback tests, benchmark reports. | Generated latest files do not enter Git. | Artifact. | Native/fallback boolean fields are compatibility-sensitive. |
 
+Native corr/cov prototype profile fields are reserved for guarded rollout:
+`native_corr_cov_used`, `native_corr_cov_time_ms`,
+`native_corr_cov_bridge_time_ms`, `native_corr_cov_output_build_time_ms`,
+`native_corr_cov_fallback_reason`, `native_corr_cov_pair_count`,
+`native_corr_cov_window`, and `native_corr_cov_null_mode`.
+
 ## Field Compatibility Principles
 
 - Field names must not be renamed casually.

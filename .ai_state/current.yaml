@@ -5,11 +5,11 @@ project:
   name: "factor-engine"
 
 status:
-  summary: "execution semantics now have code-level PhysicalProperties, registry-backed explicit property contracts for core operators, audited materialized ordered coverage for rolling_single/pair/positional/rank families, P1 native positional low-copy parallel scan, M1 memory attribution, R4 executor-native reuse, P4 attribution closure, L1/L1.5 lifecycle observability, L2 active node-store drop validation/hardening, L3A native-heavy feasibility review, L3B helper-column lifecycle observability, L3B.1 helper acceptance, L3B.2 helper active-drop design, L3B.3 first-wave helper active drop, L3B.4 nested helper probe, L3B.5 pure-chain nested helper active drop, M2.5 lifecycle freeze validation, and M3 proposal/executable auto optimization with M4 bridge scaffolding."
-  phase: "m3_auto_pipeline_and_m4_bridge"
+  summary: "Current repository truth is now a pre-full-native rolling freeze: corr/cov semantics are locked by golden and parity coverage, the native corr/cov prototype built and ran, the first A/B gate rejected the current Python-object bridge, positional low-copy remains the reference native bridge, and the next step is documentation plus instrumentation planning only."
+  phase: "pre-full-native-rolling"
 
 focus:
-  objective: "M3: run materialization-discipline candidates through automatic generation, scoring, history, stagnation detection, and M4 bridge candidate generation without changing frozen M2 lifecycle behavior."
+  objective: "Freeze current pre-full-native rolling state, keep the rejected corr/cov native prototype experimental-only, and prepare the next low-copy corr/cov instrumentation plan without implementing it."
   primary_paths:
     - ".ai_state/current.yaml"
     - "src/factor_engine/physical_properties.py"
@@ -562,3 +562,38 @@ m4_freeze_status:
     - "benchmarks/m3_auto_pipeline_1m/m4_3_fusion_decision.md"
     - "benchmarks/m3_auto_pipeline_1m/m4_freeze_review.md"
     - "benchmarks/m3_auto_pipeline_1m/m4_value_summary.yaml"
+
+pre_full_native_rolling:
+  phase: "pre-full-native-rolling"
+  git_head: "340553f45c741f4f52668bc01c3fb3d927aa78c4"
+  freeze_report: "docs/architecture/pre_full_native_freeze_report.md"
+  low_copy_experiment_plan: "docs/architecture/low_copy_corr_cov_experiment_plan.md"
+  readiness_statement: "NEEDS_DIRTY_TREE_CLEANUP_FIRST"
+  native_corr_cov:
+    status: "prototype_rejected_experimental_only"
+    default_enabled: false
+    env_flag: "FACTOR_ENGINE_NATIVE_CORR_COV"
+    parallel_env_flag: "FACTOR_ENGINE_NATIVE_CORR_COV_PARALLEL"
+    ab_report: "benchmarks/reports/native_corr_cov_ab.md"
+    ab_artifact: "benchmarks/artifacts/native_corr_cov_ab.json"
+    next_step: "instrument_low_copy_experiment_without_implementation"
+  rolling_semantics:
+    corr_cov: "frozen"
+    ts_rank: "pending"
+    ts_std: "pending"
+  file_hygiene:
+    pycache_tracked: false
+    benchmark_artifacts_ignored: true
+    dirty_files_allowed: false
+  validation:
+    targeted_pytest: "passed"
+    native_import: "passed"
+    native_parity: "passed"
+    rust_check: "passed_with_cargo_exe"
+    benchmark_decision: "reject_native_slower_than_polars"
+    readiness_report: "docs/architecture/full_native_readiness_after_corr_cov_gate.md"
+  rules:
+    - "do_not_change_public_dsl_without_doc"
+    - "do_not_enable_native_by_default_without_ab_accept"
+    - "do_not_claim_rss_release_from_logical_drop"
+    - "benchmark_before_optimization"

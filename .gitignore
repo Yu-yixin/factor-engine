@@ -32,6 +32,7 @@ tmp_*/
 .tmp/
 .tmp_*/
 *.tmp
+tmp_*.txt
 out.txt
 
 # Runtime artifacts
@@ -64,6 +65,7 @@ benchmarks/**/*.jsonl
 benchmarks/**/memory_events*.json
 benchmarks/**/node_execution*.json
 benchmarks/**/stage_events*.json
+benchmarks/artifacts/tmp/
 
 # Rust/native build
 native/**/target/
