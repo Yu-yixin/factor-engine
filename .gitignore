@@ -19,6 +19,9 @@ env/
 .env
 .env.*
 !.env.example
+.ai/
+.ai_state/
+AGENTS.md
 
 # Editor / OS
 .vscode/
@@ -34,6 +37,7 @@ tmp_*/
 *.tmp
 tmp_*.txt
 out.txt
+scratch_test/
 
 # Runtime artifacts
 artifacts/*

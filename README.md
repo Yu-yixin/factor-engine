@@ -1,38 +1,71 @@
-# 因子表达式引擎
+# Factor Engine
 
-Factor Engine 是一个基于 Python + Polars 的因子表达式计算原型系统，用来把表达式字符串解析、校验并执行成 DataFrame 结果。
+Factor Engine is a correctness-first factor expression engine built on Python and Polars. It parses a factor DSL, validates expression semantics before execution, plans execution routes, and evaluates factors on DataFrames with explicit behavior around ordering, grouping, materialization, and lifecycle.
 
-## What This Engine Is
+This repository is optimized for research and engine evolution, not for packaging polish or benchmark marketing. DSL semantics, planner contracts, lifecycle boundaries, and materialization behavior are treated as stability-sensitive.
 
-这个引擎面向研究型工作流，重点解决三件事：
+## What This Repository Provides
 
-- 把 DSL 表达式解析成可执行内部表示
-- 在执行前做语义校验
-- 在 Polars DataFrame 上执行 pointwise、cross-sectional、time-series、segmented 和 table 表达式
+- A parser and validator for a factor DSL.
+- A `FactorEngine` API for single-expression and batch evaluation.
+- Execution paths covering pointwise, cross-sectional, time-series, segmented, and table-style expressions.
+- Planner and executor internals with correctness-oriented docs and tests.
+- Workflow scripts for batch factor evaluation from YAML or JSON inputs.
+- Benchmarks and profiling reports with archived evidence.
 
-`README` 只保留入口信息。完整语言语义、函数规则、工作流和错误系统已经拆到 `docs/` 下的专门文档。
+## Core Principles
 
-## What You Can Do
+- Correctness first over speed claims or convenience.
+- No silent DSL semantic changes.
+- No silent lifecycle or planner contract changes.
+- Materialization semantics must be explicit.
+- Performance claims must be backed by reproducible artifacts.
 
-- 写逐点表达式：`close - open`
-- 写截面表达式：`demean(close)`、`group_rank(close, industry, pct=true)`
-- 写时序表达式：`delta(close, 1)`、`ts_rank(close, 20, pct=true)`
-- 写分段表达式：`seg_mean(close, 3)`、`seglen_sum(close, [3, 5, 2])`
-- 写组合表达式：`where(not is_null(close), clip(ts_mean(close, 5), 0, 100), 0)`
-- 跑单表达式或批量表达式
-- 从 YAML / JSON 文件加载表达式批次并把结果写到 parquet / csv
+## Expression Families
 
-## 安装
+- Pointwise: `close - open`
+- Cross-sectional: `demean(close)`, `rank(close, pct=true)`
+- Grouped cross-sectional: `group_rank(close, industry, pct=true)`
+- Time-series: `delta(close, 1)`, `ts_rank(close, 20, pct=true)`
+- Segmented: `seg_mean(close, 3)`, `seglen_sum(close, [3, 5, 2])`
+- Table/output-expanding: `fft(...)`
 
-建议使用 Python `3.10+`。
+Example composed expression:
+
+```text
+where(not is_null(close), clip(ts_mean(close, 5), 0, 100), 0)
+```
+
+## Quick Start
+
+Factor Engine currently runs as a source-tree project. The simplest workflow is to install dependencies locally and run with `PYTHONPATH=src`.
+
+### Windows PowerShell
 
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 py -m pip install polars pytest ruff
+$env:PYTHONPATH="src"
+py -m pytest -q
 ```
 
-## Quick Example
+### Bash
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install polars pytest ruff
+PYTHONPATH=src python3 -m pytest -q
+```
+
+If your shell or WSL environment has trouble with pytest output capture, retry with:
+
+```bash
+PYTHONPATH=src python3 -m pytest -q -s
+```
+
+## Minimal Example
 
 ```python
 import polars as pl
@@ -63,121 +96,89 @@ print(single)
 print(batch)
 ```
 
-组合表达式示例：
-
-```text
-where(not is_null(close), clip(ts_mean(close, 5), 0, 100), 0)
-```
-
-文件工作流示例入口：
+## Batch Workflow Example
 
 ```powershell
 $env:PYTHONPATH="src"
 py scripts/workflow/file_batch_workflow.py input.parquet expressions.yaml --output result.parquet
 ```
 
-## Core Concepts
-
-- `pointwise`
-  - 逐行计算，不依赖分组排序
-- `cross-sectional`
-  - 按 `time` 分组
-- `grouped cross-sectional`
-  - 按 `[time, group_col]` 分组
-- `time-series`
-  - 按 `code` 分组、按 `time` 排序
-- `segmented`
-  - 仍走 time-series 路径，但把每个 `code` 序列切成段后再聚合
-- `table`
-  - 返回新表；当前是 `fft(...)`
+The workflow layer also supports JSON/YAML expression batches, strict mode, `continue-on-error`, and run-summary outputs. See [docs/workflow.md](docs/workflow.md).
 
 ## Public API
 
-核心入口仍然是 `FactorEngine`：
+`FactorEngine` is the main user-facing entry point.
 
 - `parse(expression)`
 - `validate(expression, df)`
 - `evaluate(expression, df, output_name="result")`
 - `evaluate_many(expressions, df)`
 
+## Testing And Validation
+
+Default test command:
+
+```bash
+PYTHONPATH=src python3 -m pytest -q
+```
+
+Representative checks:
+
+- Full test suite: `PYTHONPATH=src python3 -m pytest -q`
+- Ruff: `.venv/Scripts/python -m ruff check` or `python3 -m ruff check`
+- Example smoke: `PYTHONPATH=src python3 examples/demo.py`
+
+Benchmark and profiling work should be treated separately from correctness validation. See [docs/current/test_policy.md](docs/current/test_policy.md) and [docs/current/benchmark_policy.md](docs/current/benchmark_policy.md).
+
+## Data And Artifact Boundaries
+
+This repository intentionally does not track large runtime data, parquet outputs, temporary profiling traces, or local benchmark dumps.
+
+- `data/` is a boundary marker, not a checked-in dataset.
+- `outputs/` is for local runtime outputs only.
+- `artifacts/` is for local benchmark/profiling storage.
+- Real, private, or large benchmark datasets should live outside the repository root.
+
+If you need local benchmark data, keep it in an external directory and pass the path explicitly to benchmark or workflow scripts.
+
 ## Repository Map
 
-- `src/factor_engine/`: core package and execution implementation.
-- `tests/`: layered test suite; see [tests/README.md](tests/README.md).
-- `examples/`: minimal usage examples only.
-- `scripts/`: workflow, maintenance, and developer utilities; see [scripts/README.md](scripts/README.md).
-- `benchmarks/`: benchmark scripts, curated reports, latest local runs, and archived snapshots; see [benchmarks/README.md](benchmarks/README.md).
-- `docs/current/`: current truth source for architecture, invariants, repository rules, setup, and cleanup plans.
-- `docs/history/`, `docs/benchmark/`, `docs/strategy/`, `docs/archive/`: historical context, benchmark methodology, future direction, and old references.
-- `artifacts/`, `outputs/`, and `data/`: local generated artifacts, runtime outputs, and data boundaries. Large/generated files should not be committed.
+- `src/factor_engine/`: engine, parser, validator, planner, executor, runtime modules.
+- `tests/`: unit, integration, workflow, perf, and profiling tests.
+- `examples/`: small usage examples.
+- `scripts/`: workflow and maintenance entry points.
+- `benchmarks/`: benchmark scripts, reports, and archived evidence.
+- `docs/`: current behavior, language rules, design notes, benchmark policy, and historical context.
+- `data/`, `outputs/`, `artifacts/`: local-only boundaries for datasets and generated outputs.
 
-New developers and AI coding agents should start with [docs/current/README.md](docs/current/README.md), then read [docs/current/architecture.md](docs/current/architecture.md) and [docs/current/invariants.md](docs/current/invariants.md) before changing behavior.
+## Recommended Reading
 
-## Docs Navigation
+Start here if you are changing engine behavior:
 
-- [docs/README.md](docs/README.md)
-  - documentation topology and current/history split
-- [docs/index.md](docs/index.md)
-  - 文档总导航与阅读顺序
-- [docs/current/README.md](docs/current/README.md)
-  - 当前真相源与推荐阅读顺序
+1. [docs/current/README.md](docs/current/README.md)
+2. [docs/current/architecture.md](docs/current/architecture.md)
+3. [docs/current/invariants.md](docs/current/invariants.md)
+4. [docs/current/repository_rules.md](docs/current/repository_rules.md)
+5. [docs/current/test_policy.md](docs/current/test_policy.md)
+
+Language and execution references:
+
 - [docs/language.md](docs/language.md)
-  - DSL 语法、表达式类型、运算符优先级、逻辑与 null 规则
 - [docs/functions.md](docs/functions.md)
-  - 全量函数参考，包括 `ts_median`、`argmax / argmin`、`group_*`、`seglen_*`
-- [docs/workflow.md](docs/workflow.md)
-  - YAML / JSON 批量输入、严格模式、continue-on-error、结果写出
 - [docs/errors.md](docs/errors.md)
-  - 错误类型、错误阶段、失败载荷、批量报告格式
-- [docs/design.md](docs/design.md)
-  - 当前代码结构与模块边界
+- [docs/workflow.md](docs/workflow.md)
 - [docs/execution_planning_optimization.md](docs/execution_planning_optimization.md)
-  - 执行规划、批量执行与缓存复用
-- [docs/history/execution_planner/execution_planner_v1.md](docs/history/execution_planner/execution_planner_v1.md)
-  - `planner v1` 的 route 规划、staged materialization 规则与实现边界
-- [docs/history/execution_planner/execution_planner_v2.md](docs/history/execution_planner/execution_planner_v2.md)
-  - `planner v2` 的递归 staged chain、深层链式调用修复范围与后续扩展方向
-- [docs/history/execution_planner/execution_planner_v3.md](docs/history/execution_planner/execution_planner_v3.md)
-  - `planner v3` 的 CSE-ready key、batch staged source/prefix 复用，以及通往 DAG 的前置结构
-- [docs/history/execution_planner/execution_planner_v4.md](docs/history/execution_planner/execution_planner_v4.md)
-  - `planner v4` 的 staged node graph、output binding，以及更接近 DAG 的 batch 执行形态
-- [docs/history/execution_planner/execution_planner_v5.md](docs/history/execution_planner/execution_planner_v5.md)
-  - `planner v5` 的 ordered batch fusion：让 compiled ordered 输出和 staged graph 共用一个 prepared frame
-- [docs/history/execution_planner/execution_planner_v6.md](docs/history/execution_planner/execution_planner_v6.md)
-  - `planner v6` 的 ordered-over-cross 修复：让 `corr/cov` 先物化 cross/grouped 输入，再做 ordered rolling
-- [docs/benchmark/benchmark.md](docs/benchmark/benchmark.md)
-  - benchmark 口径与结果落点
-- [docs/documentation_policy.md](docs/documentation_policy.md)
-  - 文档治理与再次优化条件
-- [docs/history/revolution.md](docs/history/revolution.md)
-  - 演进记录与阶段性决策
+- [docs/stage_lifecycle.md](docs/stage_lifecycle.md)
+- [docs/dag_cse.md](docs/dag_cse.md)
 
-## 开发与验证
+## Current Boundaries
 
-运行全部测试：
+- String literals are not supported.
+- `evaluate_many()` accepts column-level expressions only.
+- Workflow file input uses a fixed YAML/JSON schema.
+- Caching and reuse semantics are explicit and documented, not “best effort”.
+- Signals intended for trading decisions usually need explicit lagging, for example `delay(signal, 1)`.
 
-```powershell
-$env:PYTHONPATH="src"
-py -m pytest
-```
+## Repository Status
 
-运行静态检查：
-
-```powershell
-.venv\Scripts\python -m ruff check
-```
-
-运行 demo：
-
-```powershell
-$env:PYTHONPATH="src"
-py examples/demo.py
-```
-
-## 当前边界
-
-- 当前不支持字符串字面量
-- `evaluate_many()` 只接受列级表达式
-- workflow 文件输入当前只支持固定 YAML / JSON schema
-- 当前缓存只覆盖编译层，不覆盖整列执行结果
-- 若表达式要用于下一期交易决策，通常应显式滞后，例如 `delay(signal, 1)`
+The repository contains both current truth documents and historical design/benchmark records. Historical material is useful context, but current behavior is governed by `docs/current/`.
